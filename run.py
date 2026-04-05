@@ -94,23 +94,23 @@ def evaluate(model, dataloader, device):
 
 if __name__ == "__main__":
     # --- GRID SEARCH PARAMETERS ---
-    # GRID_PARAMS = {
-    #     "lr": [5e-2, 1e-2, 5e-3, 1e-3],  # Increased LR range
-    #     "batch_size": [128],
-    #     "epochs": [100],
-    #     "weight_decay": [1e-2, 1e-3, 8e-4],  # Increased WD
-    #     "label_smoothing": [0.1],  # New hyperparam
-    #     "dropout": [0, 0.3, 0.5],  # New hyperparam
-    # }
-    
     GRID_PARAMS = {
-        "lr": [1e-2],  # Increased LR range
+        "lr": [5e-2, 1e-2, 5e-3, 1e-3],  # Increased LR range
         "batch_size": [128],
         "epochs": [100],
-        "weight_decay": [0],  # Increased WD
-        "label_smoothing": [0],  # New hyperparam
-        "dropout": [0],  # New hyperparam
+        "weight_decay": [1e-2, 1e-3, 8e-4],  # Increased WD
+        "label_smoothing": [0.1, 0.2],  # New hyperparam
+        "dropout": [0, 0.3, 0.5],  # New hyperparam
     }
+    
+    # GRID_PARAMS = {
+    #     "lr": [1e-2],  # Increased LR range
+    #     "batch_size": [128],
+    #     "epochs": [100],
+    #     "weight_decay": [0],  # Increased WD
+    #     "label_smoothing": [0],  # New hyperparam
+    #     "dropout": [0],  # New hyperparam
+    # }
 
     DATA_ROOT = "dataset/split_dataset"
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -123,9 +123,9 @@ if __name__ == "__main__":
     train_transform = transforms.Compose(
         [
             transforms.Resize((224, 224)),
-            # transforms.RandomHorizontalFlip(p=0.5),
-            # transforms.RandomRotation(degrees=10),
-            # transforms.ColorJitter(brightness=0.2, contrast=0.2),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(degrees=10),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
         ]
