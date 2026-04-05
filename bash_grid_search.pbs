@@ -6,7 +6,8 @@
 #PBS -N train_meme_detector
 #PBS -j oe
 #PBS -o /home/project/12004268/giabao/cultural-meme-detector/out_train_meme_detector.txt
-
+#PBS -m abe
+#PBS -M giabao.cao@ntu.edu.sg
 
 cd /home/project/12004268/giabao/cultural-meme-detector #need to change directory to the project folder first
 
