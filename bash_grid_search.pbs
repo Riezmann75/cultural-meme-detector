@@ -26,6 +26,6 @@ TORCHDYNAMO_VERBOSE=1
 
 #run the file
 export HF_HOME="/home/users/ntu/giabaoca/myProject-12004268/giabao/hf_cache"
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=0,1,2
 export CUDA_LAUNCH_BLOCKING=1
-python3 run.py
+torchrun --nnodes=1 --nproc_per_node=3 ddp_torch.py
