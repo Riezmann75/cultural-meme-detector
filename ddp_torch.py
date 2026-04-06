@@ -14,8 +14,8 @@ if __name__ == "__main__":
 
     transforms_list = [
         v2.ToImage(),
-        # Pad(target_size=500),
-        v2.Resize((224, 224), antialias=True),
+        Pad(target_size=224),
+        # v2.Resize((224, 224), antialias=True),
         v2.ToDtype(torch.float32, scale=True),
         v2.Normalize(mean, std),
     ]
@@ -43,7 +43,7 @@ if __name__ == "__main__":
                         # v2.RandomApply(
                         #     [
                         #         v2.GaussianBlur(
-                        #             kernel_size=(5, 9),
+                        #             kernel_size=3,
                         #             sigma=(0.1, 5),
                         #         ),
                         #     ]

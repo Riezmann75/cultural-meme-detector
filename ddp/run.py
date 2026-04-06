@@ -122,7 +122,7 @@ def train_one_config(
             test_accs,
             test_precisions,
         )
-        save_model(model_save_path, model)
+        # save_model(model_save_path, model)
         save_config(config_save_path, config_dict)
 
     model = cleanup(model)

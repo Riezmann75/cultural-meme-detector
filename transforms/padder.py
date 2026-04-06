@@ -15,7 +15,7 @@ class Pad(Transform):
             img = F.to_pil_image(img)
 
         # Resize with aspect ratio preserved
-        img = F.resize(img, self.target_size)
+        img = F.resize(img, self.target_size, antialias=True)
 
         # Padding to square
         pad = [0, 0, 0, 0]
@@ -30,6 +30,6 @@ class Pad(Transform):
         padded = F.pad(img, pad, fill=self.fill)
 
         # Final resize (just to be safe)
-        padded = F.resize(padded, (self.target_size, self.target_size))
+        padded = F.resize(padded, (self.target_size, self.target_size), antialias=True)
 
         return tv_tensors.Image(padded)

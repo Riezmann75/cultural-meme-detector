@@ -19,12 +19,27 @@ def plot_training_results(
     config_dict,
     save_dir,
 ):
-    plot_title = "lr={lr}, momentum={momentum}, weight_decay={weight_decay}, batch_size={batch_size}".format(
-        lr=config_dict["optimizer"]["lr"],
-        momentum=config_dict["optimizer"]["momentum"],
-        weight_decay=config_dict["optimizer"]["weight_decay"],
-        batch_size=config_dict["data"]["batch_size"],
+    lr = config_dict["optimizer"]["lr"] if "lr" in config_dict["optimizer"] else None
+    momentum = (
+        config_dict["optimizer"]["momentum"]
+        if "momentum" in config_dict["optimizer"]
+        else None
     )
+    weight_decay = (
+        config_dict["optimizer"]["weight_decay"]
+        if "weight_decay" in config_dict["optimizer"]
+        else None
+    )
+    batch_size = (
+        config_dict["data"]["batch_size"]
+        if "batch_size" in config_dict["data"]
+        else None
+    )
+    plot_title = "lr={lr}".format(lr=lr) if lr is not None else ""
+    plot_title += ", momentum={momentum}".format(momentum=momentum) if momentum is not None else ""
+    plot_title += ", weight_decay={weight_decay}".format(weight_decay=weight_decay) if weight_decay is not None else ""
+    plot_title += ", batch_size={batch_size}".format(batch_size=batch_size) if batch_size is not None else ""
+    
     x = np.arange(train_losses.shape[0])
     # train-val loss
     utils.plot_and_save(
@@ -33,7 +48,7 @@ def plot_training_results(
         "num epochs",
         "loss",
         np.arange(0, config_dict["train"]["num_epochs"] + 10, 10),
-        np.arange(0, 1.1, 0.1),
+        None, # np.arange(0, 1.1, 0.1),
         ["train loss", "val loss"],
         plot_title,
         f"{save_dir}/loss.png",

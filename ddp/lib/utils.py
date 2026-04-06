@@ -43,8 +43,8 @@ def plot_and_save(
         if isinstance(y, torch.Tensor):
             y = y.reshape(-1).cpu().detach().numpy()
             plt.plot(x, y, label=label)
-
-    plt.yticks(y_ticks)
+    if y_ticks is not None:
+        plt.yticks(y_ticks)
     plt.xticks(x_ticks)
     plt.legend()
     plt.title(plt_title)
