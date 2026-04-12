@@ -3,9 +3,9 @@
 #PBS -l select=1:ngpus=4
 #PBS -q ai
 #PBS -P 12004268
-#PBS -N finetune_qwen2.5
+#PBS -N evaluate_qwen2.5
 #PBS -j oe
-#PBS -o /home/project/12004268/giabao/cultural-meme-detector/out_finetune_qwen2.5.txt
+#PBS -o /home/project/12004268/giabao/cultural-meme-detector/out_evaluate_qwen2.5.txt
 #PBS -m abe
 #PBS -M giabao.cao@ntu.edu.sg
 
@@ -28,4 +28,4 @@ TORCHDYNAMO_VERBOSE=1
 export HF_HOME="/home/users/ntu/giabaoca/myProject-12004268/giabao/hf_cache"
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 export CUDA_LAUNCH_BLOCKING=1
-python eval_qwen_meme_classifier.py
+python evaluate_qwen2.5.py
