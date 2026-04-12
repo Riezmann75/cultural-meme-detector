@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch import distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
+import torchvision
 
 from ddp.lib.book_keeper import (
     plot_training_results,
@@ -129,14 +130,14 @@ def train_one_config(
 
 
 def load_model(rank, is_distributed, num_classes=3, model_path=None):
-    model = SiglipMemeClassifier()
+    model = SiglipMemeClassifier(dropout_rate=0)
+    # model = torchvision.models.resnet50(weights=torchvision.models.ResNet50_Weights.IMAGENET1K_V2)
     if is_distributed:
         model = DDP(
             model.to(rank),
             device_ids=[rank],
             output_device=rank,
             bucket_cap_mb=25,
-            find_unused_parameters=bool(model_path),
         )
     else:
         model = model.to(rank)

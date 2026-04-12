@@ -14,7 +14,7 @@ if __name__ == "__main__":
 
     transforms_list = [
         v2.ToImage(),
-        Pad(target_size=224),
+        Pad(target_size=256),
         # v2.Resize((224, 224), antialias=True),
         v2.ToDtype(torch.float32, scale=True),
         v2.Normalize(mean, std),
@@ -27,30 +27,26 @@ if __name__ == "__main__":
     config_dicts = [
         {
             "criterion": {
-                "label_smoothing": 0,
+                "label_smoothing": 0.1,
             },
-            "optimizer": {"lr": 0.01, "weight_decay": 0},
+            "optimizer": {"lr": 0.002, "weight_decay": 0},
             "data": {
                 "batch_size": 32,
                 "transforms": {
                     "common": transforms_list,
                     "train": [
-                        # v2.RandomPerspective(
-                        #     distortion_scale=0.5,
-                        #     p=0.3,
-                        # ),
-                        # v2.RandomGrayscale(p=0.3),
-                        # v2.RandomApply(
-                        #     [
-                        #         v2.GaussianBlur(
-                        #             kernel_size=3,
-                        #             sigma=(0.1, 5),
-                        #         ),
-                        #     ]
-                        # ),
+                        v2.RandomPerspective(
+                            distortion_scale=0.1,
+                            p=0.3,
+                        ),
+                        v2.ColorJitter(
+                            brightness=0.1,
+                            contrast=0.1,
+                            saturation=0.1,
+                        ),
                     ],
                 },
-                "num_workers": world_size * 2,
+                "num_workers": world_size * 3,
             },
             "train": {
                 "num_epochs": 100,
@@ -58,28 +54,16 @@ if __name__ == "__main__":
         },
     ]
     is_distributed = world_size > 1
-    if is_distributed:
-        local_rank = int(os.environ["LOCAL_RANK"])
-        for index, config in enumerate(config_dicts):
-            train_one_config(
-                local_rank,
-                is_distributed,
-                index,
-                config,
-                data_dir,
-                save_dir,
-                model_path=None,
-            )
-        if local_rank == 0:
-            dist.destroy_process_group()
-    else:
-        for index, config in enumerate(config_dicts):
-            train_one_config(
-                0,
-                is_distributed,
-                index,
-                config,
-                data_dir,
-                save_dir,
-                model_path="experiments/finetune_vie_detector/apr_02_2025/config_31/resnet50.pth",
-            )
+    local_rank = int(os.environ["LOCAL_RANK"])
+    for index, config in enumerate(config_dicts):
+        train_one_config(
+            local_rank,
+            is_distributed,
+            index,
+            config,
+            data_dir,
+            save_dir,
+            model_path=None,
+        )
+    if local_rank == 0:
+        dist.destroy_process_group()

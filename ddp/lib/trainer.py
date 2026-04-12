@@ -1,4 +1,5 @@
 import os
+import pdb
 from typing import Optional
 
 import torch
@@ -19,7 +20,7 @@ class Trainer:
         is_distributed,
         rank,
         model,
-        criterion: torch.nn.CrossEntropyLoss,
+        criterion,
         optimizer,
         scheduler,
         profiler: torch.profiler.profile = None,
@@ -63,7 +64,7 @@ class Trainer:
         ):
             if self.is_distributed:
                 train_loader.sampler.set_epoch(epoch)
-                
+
             # Train model
             self.model.train()
             running_loss, running_correct, *_ = self.consume_data(train_loader)
@@ -145,15 +146,16 @@ class Trainer:
 
         prefetcher = DataFetcher(data_loader)
         inputs, labels = prefetcher.next()
-
+        
         while inputs is not None:
             self.optimizer.zero_grad()
             # if requires_grad:
-            #     mix_up = v2.MixUp(alpha=12e-3, num_classes=3)
+            #     mix_up = v2.MixUp(alpha=0.2, num_classes=2)
             #     inputs, labels = mix_up(inputs, labels)
-
+                
             outputs = self.model(inputs)
-            loss = self.criterion.forward(outputs, labels)
+            # loss = self.criterion(outputs, labels) # use in case of non-mixup collate_fn
+            loss = self.criterion(outputs, labels)
             _, preds = torch.max(outputs, 1)
 
             if requires_grad:
@@ -163,14 +165,15 @@ class Trainer:
                     self.profiler.step()
                 # labels = torch.max(labels, 1)[1]
 
-            batch_running_correct = torch.sum(preds == labels)
-            batch_true_positive = torch.sum(preds & labels)
-            batch_false_positive = torch.sum(preds & ~labels)
+            # actual_labels = torch.max(labels, 1)[1] if requires_grad else labels
+            actual_labels = labels  # use in case of non-mixup collate_fn
+            batch_running_correct = torch.sum(preds == actual_labels)
+            batch_true_positive = torch.sum(preds & actual_labels)
+            batch_false_positive = torch.sum(preds & ~actual_labels)
 
             running_loss += loss * inputs.size(0)
             running_correct += batch_running_correct
             true_positive += batch_true_positive
             false_positive += batch_false_positive
-
             inputs, labels = prefetcher.next()
         return running_loss, running_correct, true_positive, false_positive

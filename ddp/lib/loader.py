@@ -1,15 +1,13 @@
-from typing import Optional
 import torch
 from PIL import Image
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from torchvision.datasets import ImageFolder
 from torchvision.transforms import v2
 
-from transforms.padder import Pad
-from ddp.lib.dataset.subset import SubSet
 
 from ddp.lib.dataset.meme import MemeDataset
+
+from ddp.lib.dataset.utils import MixUpCollate
 
 
 def resize_with_padding(image, target_size):
