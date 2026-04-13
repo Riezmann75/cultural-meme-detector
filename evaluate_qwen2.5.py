@@ -8,7 +8,7 @@ from PIL import Image
 from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
 from peft import PeftModel
 from qwen_vl_utils import process_vision_info
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
 def get_latest_config_dir(base_results_dir="results", target_date=None):
     """Finds the most recently created config directory, optionally for a specific date."""
@@ -28,13 +28,14 @@ def get_latest_config_dir(base_results_dir="results", target_date=None):
         raise ValueError(f"No config directories found in {latest_date_dir}.")
     return config_dirs[-1]
 
-def gather_test_data(data_root, split="test"):
+def gather_data(data_root, split="test"):
     samples = []
     split_dir = os.path.join(data_root, split)
     label_map = {"negative": 0, "positive": 1}
     
     if not os.path.exists(split_dir):
-        raise ValueError(f"Directory {split_dir} does not exist.")
+        print(f"Warning: Directory {split_dir} does not exist.")
+        return samples
 
     for lang in os.listdir(split_dir):
         lang_dir = os.path.join(split_dir, lang)
@@ -44,8 +45,66 @@ def gather_test_data(data_root, split="test"):
                 if os.path.exists(class_dir) and os.path.isdir(class_dir):
                     for img_name in os.listdir(class_dir):
                         if img_name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
-                            samples.append((os.path.join(class_dir, img_name), label))
+                            # We now append the lang so we can sort false predictions by language
+                            samples.append((os.path.join(class_dir, img_name), label, lang))
     return samples
+
+def evaluate_split(model, processor, samples, split_name):
+    y_true, y_pred = [], []
+    false_preds = {}
+
+    print(f"\nEvaluating {split_name.upper()} split on {len(samples)} images...")
+    
+    for img_path, true_label, lang in tqdm(samples, desc=f"{split_name.capitalize()}"):
+        try:
+            image = Image.open(img_path).convert("RGB")
+        except Exception:
+            continue
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image, "max_pixels": 262144},
+                    {"type": "text", "text": "Task: Classify if this image is a cultural meme from Vietnam or Indonesia. Output only YES or NO."},
+                ],
+            }
+        ]
+
+        text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        
+        inputs = processor(
+            text=[text], images=image_inputs, padding=True, return_tensors="pt"
+        ).to(model.device)
+
+        generated_ids = model.generate(**inputs, max_new_tokens=5)
+        generated_ids_trimmed = [
+            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+        output_text = processor.batch_decode(
+            generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )[0].strip().lower()
+
+        pred_label = 1 if "yes" in output_text else 0
+        
+        y_true.append(true_label)
+        y_pred.append(pred_label)
+
+        # Track false predictions
+        if pred_label != true_label:
+            if lang not in false_preds:
+                false_preds[lang] = {"false_positives": [], "false_negatives": []}
+            if pred_label == 1:
+                false_preds[lang]["false_positives"].append(img_path)
+            else:
+                false_preds[lang]["false_negatives"].append(img_path)
+
+    acc = accuracy_score(y_true, y_pred)
+    cm = confusion_matrix(y_true, y_pred)
+    report = classification_report(y_true, y_pred, target_names=["Not Meme", "Meme"], zero_division=0)
+    
+    return acc, cm, report, false_preds
 
 def evaluate(target_date=None):
     BASE_MODEL_ID = "Qwen/Qwen2-VL-2B-Instruct"
@@ -78,69 +137,52 @@ def evaluate(target_date=None):
     model = PeftModel.from_pretrained(base_model, lora_dir)
     model.eval()
 
-    test_samples = gather_test_data(DATA_ROOT, split="test")
-    y_true, y_pred = [], []
+    # 4. Evaluate all splits
+    splits_to_eval = ["train", "val", "test"]
+    all_false_preds = {}
+    test_acc = 0.0
 
-    print(f"Starting Evaluation on {len(test_samples)} test images...")
     with torch.no_grad():
-        for img_path, true_label in tqdm(test_samples):
-            try:
-                image = Image.open(img_path).convert("RGB")
-            except Exception:
+        for split in splits_to_eval:
+            samples = gather_data(DATA_ROOT, split)
+            if not samples:
                 continue
-
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image", "image": image, "max_pixels": 262144},
-                        {"type": "text", "text": "Task: Classify if this image is a cultural meme from Vietnam or Indonesia. Output only YES or NO."},
-                    ],
-                }
-            ]
-
-            text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            image_inputs, video_inputs = process_vision_info(messages)
             
-            inputs = processor(
-                text=[text], images=image_inputs, padding=True, return_tensors="pt"
-            ).to(model.device)
-
-            generated_ids = model.generate(**inputs, max_new_tokens=5)
-            generated_ids_trimmed = [
-                out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-            ]
-            output_text = processor.batch_decode(
-                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
-            )[0].strip().lower()
-
-            pred_label = 1 if "yes" in output_text else 0
+            acc, cm, report, split_false_preds = evaluate_split(model, processor, samples, split)
+            all_false_preds[split] = split_false_preds
             
-            y_true.append(true_label)
-            y_pred.append(pred_label)
+            if split == "test":
+                test_acc = acc
+            
+            print(f"\n=== {split.upper()} RESULTS ===")
+            print(f"Accuracy: {acc:.4f}")
+            print("\nConfusion Matrix:")
+            print(cm)
+            print("\nClassification Report:")
+            print(report)
 
-    # 4. Calculate Final Metrics
-    final_acc = accuracy_score(y_true, y_pred)
-    print("\n=== CLASSIFICATION REPORT ===")
-    print(classification_report(y_true, y_pred, target_names=["Not Meme", "Meme"]))
-    print(f"Final Accuracy: {final_acc:.4f}")
+    # 5. Save False Predictions to JSON
+    fp_filename = os.path.join(config_dir, "false_predictions.json")
+    with open(fp_filename, "w", encoding="utf-8") as f:
+        json.dump(all_false_preds, f, indent=4)
+    print(f"\n[Success] False predictions saved to: {fp_filename}")
 
-    # 5. Plot and Save Graph
+    # 6. Plot and Save Graph
     if epochs:
         plt.figure(figsize=(10, 6))
         plt.plot(epochs, train_losses, marker='o', label='Training Loss', color='blue')
         plt.plot(epochs, val_losses, marker='o', label='Validation Loss', color='red')
-        plt.title(f'Train vs. Validation Loss (Final Acc = {final_acc:.2f})')
+        plt.title(f'Train vs. Validation Loss (Test Acc = {test_acc:.2f})')
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
         plt.legend()
         plt.grid(True)
         
-        plot_filename = f"Train vs. Validation loss, final acc.={final_acc:.2f}.png"
+        plot_filename = f"Train vs. Validation loss, final acc.={test_acc:.2f}.png"
         plot_path = os.path.join(config_dir, plot_filename)
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         plt.close()
-        print(f"Plot saved successfully to: {plot_path}")
+        print(f"[Success] Plot saved successfully to: {plot_path}")
 
 if __name__ == "__main__":
     # Specify a date like "20260413" or leave as None to automatically grab the closest/latest date
