@@ -1,5 +1,7 @@
 import os
 import torch
+import json
+import time
 from torch.utils.data import Dataset, DataLoader
 from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
 from peft import LoraConfig, get_peft_model
@@ -7,8 +9,6 @@ from qwen_vl_utils import process_vision_info
 from accelerate import Accelerator
 from tqdm import tqdm
 from PIL import Image
-import time
-import json
 
 # --- 1. THE MLLM DATASET ---
 class QwenMemeDataset(Dataset):
@@ -78,8 +78,7 @@ class QwenMemeDataset(Dataset):
         # --- THE MASKING FIX (Breaks Mode Collapse) ---
         labels = inputs["input_ids"].clone()
         
-        # FIX: Tokenize the prompt WITH images to find out the EXACT token length
-        # Without passing images here, it doesn't count the hundreds of image patches!
+        # Tokenize the prompt WITH images to find out the EXACT token length
         prompt_only_inputs = self.processor(
             text=[prompt_text], 
             images=image_inputs, 
@@ -124,11 +123,12 @@ def train():
     accelerator = Accelerator(gradient_accumulation_steps=4)
     
     MODEL_ID = "Qwen/Qwen2-VL-2B-Instruct"
-    BATCH_SIZE = 2 # Physical batch size of 1 per GPU
+    BATCH_SIZE = 1 # Physical batch size of 1 per GPU
     EPOCHS = 10
     LR = 2e-5 
+    PATIENCE = 3 # Stop after 3 epochs of no validation improvement
     
-    # NEW: Setup Directory Structure & Config Logging
+    # Setup Directory Structure & Config Logging
     if accelerator.is_main_process:
         today = time.strftime("%Y%m%d")
         base_dir = os.path.join("results", today)
@@ -145,7 +145,8 @@ def train():
         log_file = os.path.join(out_dir, "experiment_log.jsonl")
         hyperparams = {
             "model_id": MODEL_ID, "batch_size": BATCH_SIZE, "epochs": EPOCHS, 
-            "learning_rate": LR, "lora_r": 16, "lora_alpha": 32, "lora_dropout": 0.05
+            "learning_rate": LR, "lora_r": 16, "lora_alpha": 32, "lora_dropout": 0.05,
+            "patience": PATIENCE
         }
         with open(log_file, "a") as f:
             f.write(json.dumps({"type": "config", "data": hyperparams}) + "\n")
@@ -181,14 +182,17 @@ def train():
     train_ds = QwenMemeDataset("dataset/split_dataset", "train", processor)
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, collate_fn=custom_collate_fn)
     
-    # NEW: Add validation dataset and loader
     val_ds = QwenMemeDataset("dataset/split_dataset", "val", processor)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, collate_fn=custom_collate_fn)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=0.01)
 
-    # Prepare everything with accelerator (include val_loader)
+    # Prepare everything with accelerator
     model, optimizer, train_loader, val_loader = accelerator.prepare(model, optimizer, train_loader, val_loader)
+
+    # --- EARLY STOPPING TRACKERS ---
+    best_val_loss = float('inf')
+    epochs_no_improve = 0
 
     # --- THE LOOP ---
     for epoch in range(EPOCHS):
@@ -211,7 +215,7 @@ def train():
             
         avg_train_loss = total_train_loss / len(train_loader)
         
-        # --- NEW: VALIDATION PHASE (Loss Only) ---
+        # --- VALIDATION PHASE (Loss Only) ---
         model.eval()
         total_val_loss = 0
         val_loop = tqdm(val_loader, desc="Validating", disable=not accelerator.is_main_process, leave=False)
@@ -223,27 +227,46 @@ def train():
                 
         avg_val_loss = total_val_loss / len(val_loader)
         
+        # SYNCHRONIZE VAL LOSS ACROSS GPUS (Crucial for multi-GPU early stopping)
+        avg_val_loss_tensor = torch.tensor(avg_val_loss, device=accelerator.device)
+        avg_val_loss_tensor = accelerator.reduce(avg_val_loss_tensor, reduction="mean")
+        global_avg_val_loss = avg_val_loss_tensor.item()
+        
         if accelerator.is_main_process:
-            print(f"Epoch {epoch+1} completed | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+            print(f"Epoch {epoch+1} completed | Train Loss: {avg_train_loss:.4f} | Val Loss: {global_avg_val_loss:.4f}")
             
-            # NEW: Log metrics to JSONL
+            # Log metrics to JSONL
             with open(log_file, "a") as f:
                 f.write(json.dumps({
                     "type": "epoch_metrics", 
                     "epoch": epoch+1, 
                     "train_loss": avg_train_loss, 
-                    "val_loss": avg_val_loss
+                    "val_loss": global_avg_val_loss
                 }) + "\n")
 
-    # Save the LoRA adapter
+        # --- EARLY STOPPING & SAVING LOGIC ---
+        if global_avg_val_loss < best_val_loss:
+            best_val_loss = global_avg_val_loss
+            epochs_no_improve = 0
+            
+            if accelerator.is_main_process:
+                print(f"➔ Validation loss improved to {best_val_loss:.4f}. Saving best model checkpoint...")
+                unwrapped_model = accelerator.unwrap_model(model)
+                lora_dir = os.path.join(out_dir, "qwen2_meme_lora")
+                unwrapped_model.save_pretrained(lora_dir)
+                processor.save_pretrained(lora_dir)
+        else:
+            epochs_no_improve += 1
+            if accelerator.is_main_process:
+                print(f"➔ Validation loss did not improve. Patience: {epochs_no_improve}/{PATIENCE}")
+            
+            if epochs_no_improve >= PATIENCE:
+                if accelerator.is_main_process:
+                    print(f"\n[!] Early stopping triggered! Validation loss has not improved for {PATIENCE} epochs.")
+                break # All GPUs break the loop together
+
     if accelerator.is_main_process:
-        print("Saving LoRA adapter...")
-        unwrapped_model = accelerator.unwrap_model(model)
-        # NEW: Save into the specific config folder
-        lora_dir = os.path.join(out_dir, "qwen2_meme_lora")
-        unwrapped_model.save_pretrained(lora_dir)
-        processor.save_pretrained(lora_dir)
-        print("Training Complete!")
+        print("Training Complete! The best model has been saved in your results folder.")
 
 if __name__ == "__main__":
     train()
