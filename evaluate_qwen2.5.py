@@ -1,17 +1,34 @@
 import os
+import glob
+import json
 import torch
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 from PIL import Image
 from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
 from peft import PeftModel
 from qwen_vl_utils import process_vision_info
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import accuracy_score, classification_report
+
+def get_latest_config_dir(base_results_dir="results", target_date=None):
+    """Finds the most recently created config directory, optionally for a specific date."""
+    if target_date:
+        latest_date_dir = os.path.join(base_results_dir, target_date)
+        if not os.path.exists(latest_date_dir):
+            raise ValueError(f"No results directory found for date: {target_date}")
+    else:
+        date_dirs = sorted(glob.glob(os.path.join(base_results_dir, "202*")))
+        if not date_dirs:
+            raise ValueError("No results directory found.")
+        latest_date_dir = date_dirs[-1]
+    
+    config_dirs = sorted(glob.glob(os.path.join(latest_date_dir, "config_*")), 
+                         key=lambda x: int(x.split('_')[-1]))
+    if not config_dirs:
+        raise ValueError(f"No config directories found in {latest_date_dir}.")
+    return config_dirs[-1]
 
 def gather_test_data(data_root, split="test"):
-    """
-    Crawls the test directory using the same language/class structure as training.
-    Returns a list of tuples: (image_path, ground_truth_label)
-    """
     samples = []
     split_dir = os.path.join(data_root, split)
     label_map = {"negative": 0, "positive": 1}
@@ -30,50 +47,54 @@ def gather_test_data(data_root, split="test"):
                             samples.append((os.path.join(class_dir, img_name), label))
     return samples
 
-def evaluate():
+def evaluate(target_date=None):
     BASE_MODEL_ID = "Qwen/Qwen2-VL-2B-Instruct"
-    LORA_DIR = "qwen2_meme_lora" # Where you saved the adapter
     DATA_ROOT = "dataset/split_dataset"
     
-    print("1. Loading Processor and Base Model...")
-    processor = AutoProcessor.from_pretrained(LORA_DIR)
+    # 1. Locate the latest experiment (or specific date)
+    config_dir = get_latest_config_dir(target_date=target_date)
+    lora_dir = os.path.join(config_dir, "qwen2_meme_lora")
+    log_file = os.path.join(config_dir, "experiment_log.jsonl")
     
-    # Load base model in bfloat16
+    print(f"Evaluating Experiment: {config_dir}")
+    
+    # 2. Parse the JSONL to get training history
+    epochs, train_losses, val_losses = [], [], []
+    if os.path.exists(log_file):
+        with open(log_file, 'r') as f:
+            for line in f:
+                data = json.loads(line.strip())
+                if data.get("type") == "epoch_metrics":
+                    epochs.append(data["epoch"])
+                    train_losses.append(data["train_loss"])
+                    val_losses.append(data["val_loss"])
+    
+    # 3. Load Model
+    print("Loading Processor and Model...")
+    processor = AutoProcessor.from_pretrained(lora_dir)
     base_model = Qwen2VLForConditionalGeneration.from_pretrained(
-        BASE_MODEL_ID, 
-        torch_dtype=torch.bfloat16,
-        device_map="auto" # Automatically places it on the best GPU
+        BASE_MODEL_ID, torch_dtype=torch.bfloat16, device_map="auto"
     )
-    
-    print("2. Injecting LoRA Adapter...")
-    # This applies your trained fine-tune weights to the base model
-    model = PeftModel.from_pretrained(base_model, LORA_DIR)
+    model = PeftModel.from_pretrained(base_model, lora_dir)
     model.eval()
 
-    print("3. Gathering Test Images...")
     test_samples = gather_test_data(DATA_ROOT, split="test")
-    print(f"Found {len(test_samples)} test images.")
+    y_true, y_pred = [], []
 
-    y_true = []
-    y_pred = []
-
-    print("4. Starting Evaluation (Batch Size = 1 for safety)...")
+    print(f"Starting Evaluation on {len(test_samples)} test images...")
     with torch.no_grad():
         for img_path, true_label in tqdm(test_samples):
             try:
                 image = Image.open(img_path).convert("RGB")
-            except Exception as e:
-                print(f"Error loading {img_path}: {e}")
+            except Exception:
                 continue
 
-            # Note: We do NOT append the assistant's answer here. 
-            # We want the model to generate it!
             messages = [
                 {
                     "role": "user",
                     "content": [
-                        {"type": "image", "image": image, "max_pixels": 262144}, # Keep the safety cap!
-                        {"type": "text", "text": "Is this image a cultural meme specific to Vietnam or Indonesia? Answer only YES or NO."},
+                        {"type": "image", "image": image, "max_pixels": 262144},
+                        {"type": "text", "text": "Task: Classify if this image is a cultural meme from Vietnam or Indonesia. Output only YES or NO."},
                     ],
                 }
             ]
@@ -82,41 +103,46 @@ def evaluate():
             image_inputs, video_inputs = process_vision_info(messages)
             
             inputs = processor(
-                text=[text],
-                images=image_inputs,
-                padding=True,
-                return_tensors="pt"
+                text=[text], images=image_inputs, padding=True, return_tensors="pt"
             ).to(model.device)
 
-            # Generate output
-            # max_new_tokens is very small (5) because we only want a YES/NO answer.
             generated_ids = model.generate(**inputs, max_new_tokens=5)
-            
-            # Slice the generated_ids to only get the NEW tokens (ignore the prompt tokens)
             generated_ids_trimmed = [
                 out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
             ]
-            
-            # Decode the text
             output_text = processor.batch_decode(
                 generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
             )[0].strip().lower()
 
-            # Robust parsing (in case the model says "Yes.", "yes", or "Yes it is")
-            if "yes" in output_text:
-                pred_label = 1
-            else:
-                # If it says "no", or hallucinates something else, we count it as negative
-                pred_label = 0
-
+            pred_label = 1 if "yes" in output_text else 0
+            
             y_true.append(true_label)
             y_pred.append(pred_label)
 
-    print("\n=== EVALUATION RESULTS ===")
-    print("Label Map: 0 = Not Meme (Negative), 1 = Meme (Positive)\n")
-    print(confusion_matrix(y_true, y_pred))
-    print("\n")
+    # 4. Calculate Final Metrics
+    final_acc = accuracy_score(y_true, y_pred)
+    print("\n=== CLASSIFICATION REPORT ===")
     print(classification_report(y_true, y_pred, target_names=["Not Meme", "Meme"]))
+    print(f"Final Accuracy: {final_acc:.4f}")
+
+    # 5. Plot and Save Graph
+    if epochs:
+        plt.figure(figsize=(10, 6))
+        plt.plot(epochs, train_losses, marker='o', label='Training Loss', color='blue')
+        plt.plot(epochs, val_losses, marker='o', label='Validation Loss', color='red')
+        plt.title(f'Train vs. Validation Loss (Final Acc = {final_acc:.2f})')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.legend()
+        plt.grid(True)
+        
+        plot_filename = f"Train vs. Validation loss, final acc.={final_acc:.2f}.png"
+        plot_path = os.path.join(config_dir, plot_filename)
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Plot saved successfully to: {plot_path}")
 
 if __name__ == "__main__":
-    evaluate()
+    # Specify a date like "20260413" or leave as None to automatically grab the closest/latest date
+    TARGET_DATE = None 
+    evaluate(target_date=TARGET_DATE)
