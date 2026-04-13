@@ -29,3 +29,4 @@ export HF_HOME="/home/users/ntu/giabaoca/myProject-12004268/giabao/hf_cache"
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 export CUDA_LAUNCH_BLOCKING=1
 accelerate launch train_qwen_meme_classifier.py
+python evaluate_qwen2.5.py
