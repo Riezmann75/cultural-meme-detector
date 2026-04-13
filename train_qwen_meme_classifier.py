@@ -124,7 +124,7 @@ def train():
     LR = 2e-4 
     
     # --- EARLY STOPPING CONFIG ---
-    USE_EARLY_STOPPING = True  
+    USE_EARLY_STOPPING = True
     PATIENCE = 3 
     
     if accelerator.is_main_process:
@@ -142,7 +142,7 @@ def train():
         log_file = os.path.join(out_dir, "experiment_log.jsonl")
         hyperparams = {
             "model_id": MODEL_ID, "batch_size": BATCH_SIZE, "epochs": EPOCHS, 
-            "learning_rate": LR, "lora_r": 16, "lora_alpha": 32, "lora_dropout": 0.05,
+            "learning_rate": LR, "lora_r": 16, "lora_alpha": 32, "lora_dropout": 0.1,
             "use_early_stopping": USE_EARLY_STOPPING, "patience": PATIENCE,
             "scheduler": "CosineAnnealingLR"
         }
@@ -177,7 +177,7 @@ def train():
     val_ds = QwenMemeDataset("dataset/split_dataset", "val", processor)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, collate_fn=custom_collate_fn)
     
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=0.01)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=0.05)
 
     # 1. Prepare model, optimizer, and loaders FIRST so the dataloader length is adjusted for multiple GPUs
     model, optimizer, train_loader, val_loader = accelerator.prepare(model, optimizer, train_loader, val_loader)
