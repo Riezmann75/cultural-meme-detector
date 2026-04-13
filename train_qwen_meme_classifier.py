@@ -123,7 +123,7 @@ def train():
     accelerator = Accelerator(gradient_accumulation_steps=4)
     
     MODEL_ID = "Qwen/Qwen2-VL-2B-Instruct"
-    BATCH_SIZE = 1 # Physical batch size of 1 per GPU
+    BATCH_SIZE = 2 # Physical batch size of 2 per GPU
     EPOCHS = 10
     LR = 2e-5 
     PATIENCE = 3 # Stop after 3 epochs of no validation improvement
