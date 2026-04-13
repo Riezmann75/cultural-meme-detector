@@ -186,6 +186,7 @@ def train():
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, collate_fn=custom_collate_fn)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=0.01)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 
     # Prepare everything with accelerator
     model, optimizer, train_loader, val_loader = accelerator.prepare(model, optimizer, train_loader, val_loader)
@@ -209,6 +210,7 @@ def train():
                 accelerator.backward(loss)
                 optimizer.step()
                 optimizer.zero_grad()
+                scheduler.step()
                 
             total_train_loss += loss.item()
             loop.set_description(f"Epoch [{epoch+1}/{EPOCHS}] Train Loss: {loss.item():.4f}")
