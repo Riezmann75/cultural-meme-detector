@@ -78,9 +78,6 @@ class MemeFilterVLM:
             "<answer> KNOWN or UNKNOWN </answer>"
         )
 
-        print("Current system prompt for inference:")
-        print(system_prompt)
-
         messages = [
             {
                 "role": "user",
