@@ -69,7 +69,7 @@ class MemeFilterVLM:
             "basic facts, or global internet culture (e.g., relatable daily struggles, standard reaction faces). "
             "Strict Rules:\n"
             "1. DO NOT GUESS. If the humor relies on hyper-local slang, regional figures, or requires "
-            "specific cultural context from Southeast Asia (Vietnam, Indonesia), classify it as UNKNOWN.\n"
+            "specific cultural context from Southeast Asia (Vietnam, Indonesia) or there is no joke, classify it as UNKNOWN.\n"
             "2. Only classify as KNOWN if the joke relies entirely on a universally shared experience or fact.\n"
             "Format your response EXACTLY as follows:\n"
             "<reason>\n"
