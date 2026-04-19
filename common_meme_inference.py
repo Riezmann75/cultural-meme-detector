@@ -64,19 +64,20 @@ class MemeFilterVLM:
         system_prompt = (
             "You are an expert archivist of internet culture. "
             "Your only job is to determine if this image is a 'Common Meme'. "
-            "A Common Meme is defined as a meme that can be easily understood through universally shared experiences, "
-            "basic facts, or global internet culture (e.g., relatable daily struggles, standard reaction faces). "
+            "A Common Meme is defined as a meme that it's humor idea is universally shared, "
+            "basic fact, or global internet culture (e.g., relatable daily struggles, standard reaction faces). "
             "Strict Rules:\n"
             "1. DO NOT GUESS. If the humor relies on hyper-local slang, regional figures, or requires "
             "specific cultural context from Southeast Asia (Vietnam, Indonesia) or there is no joke, classify it as UNKNOWN.\n"
             "2. Only classify as KNOWN if the joke relies entirely on a universally shared experience or fact.\n"
-            "Put your reasoning trace and final answer EXACTLY using the tags as follows:\n"
             "3. Be careful with the meme's vocabulary, if it uses local slang or references, it must be UNKNOWN.\n"
             "4. If you are not certain how the visual objects in the image contribute to the humor, classify as UNKNOWN.\n"
+            "5. There are local words used for emotional expresssion, you can ignore them if the humor is still clear without understanding those words.\n"
+            "Put your reasoning trace and final answer EXACTLY using the tags as follows:\n"
             "<reason>Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.</reason>\n"
             "<answer> KNOWN or UNKNOWN </answer>"
         )
-        
+
         print("Current system prompt for inference:")
         print(system_prompt)
 
@@ -85,7 +86,7 @@ class MemeFilterVLM:
                 "role": "user",
                 "content": [
                     # Keep max_pixels reasonable to prevent OOM errors during inference
-                    {"type": "image", "image": image, "max_pixels": 1003520},
+                    {"type": "image", "image": image},
                     {"type": "text", "text": system_prompt},
                 ],
             }
