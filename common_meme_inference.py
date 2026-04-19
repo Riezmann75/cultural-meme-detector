@@ -63,11 +63,11 @@ class MemeFilterVLM:
             "A Common Meme is defined as a meme that it's humor idea is universally shared, "
             "basic fact, or global internet culture (e.g., relatable daily struggles, standard reaction faces). "
             "Strict Rules:\n"
-            "1. DO NOT GUESS. If the humor idea completely relies on hyper-local slang, regional figures, or requires "
-            "specific cultural context from Southeast Asia (Vietnam, Indonesia) or there is no joke, classify it as UNKNOWN.\n"
-            "2. Only classify as KNOWN if the joke relies entirely on a universally shared experience or fact.\n"
-            "3. Be careful with the meme's vocabulary, if it uses local slang or references, it tends to be UNKNOWN.\n"
-            "4. If you are not certain how the visual objects in the image contribute to the humor and the humor idea is not clear, classify as UNKNOWN.\n"
+            "1. DO NOT GUESS. If you can confidently identify the humor idea and it completely relies on hyper-local slang, regional figures, or requires "
+            "specific cultural context from Southeast Asia (Vietnam, Indonesia), or there is no joke, classify it as UNKNOWN.\n"
+            "2. Be careful with the meme's vocabulary, if it uses local slang or references, it tends to be UNKNOWN.\n"
+            "3. If you are not certain how the visual objects in the image contribute to the humor and the humor idea is not clear, classify as UNKNOWN.\n"
+            "4. Look at the overall meaning, only classify the meme as KNOWN if the humor idea relies entirely on a universally shared experience or fact.\n"
             "5. There are local words used for emotional expresssion, you can ignore them if the humor is still clear without understanding those words.\n"
             "Put your reasoning trace and your final conclusion EXACTLY using the tags as follows:\n"
             "<reason>Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.</reason>\n"
@@ -201,7 +201,7 @@ if __name__ == "__main__":
     TARGET_FOLDER = "dataset/sample-common-meme-detector"
 
     # Set batch_size depending on your GPU memory (2, 4, or 8)
-    BATCH_SIZE = 2
+    BATCH_SIZE = 3
 
     if os.path.exists(TARGET_FOLDER):
         process_image_folder(analyzer, TARGET_FOLDER, batch_size=BATCH_SIZE)
