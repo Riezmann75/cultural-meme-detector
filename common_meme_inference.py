@@ -67,13 +67,13 @@ class MemeFilterVLM:
             "A Common Meme is defined as a meme that it's humor idea is universally shared, "
             "basic fact, or global internet culture (e.g., relatable daily struggles, standard reaction faces). "
             "Strict Rules:\n"
-            "1. DO NOT GUESS. If the humor relies on hyper-local slang, regional figures, or requires "
+            "1. DO NOT GUESS. If the humor idea completely relies on hyper-local slang, regional figures, or requires "
             "specific cultural context from Southeast Asia (Vietnam, Indonesia) or there is no joke, classify it as UNKNOWN.\n"
             "2. Only classify as KNOWN if the joke relies entirely on a universally shared experience or fact.\n"
-            "3. Be careful with the meme's vocabulary, if it uses local slang or references, it must be UNKNOWN.\n"
-            "4. If you are not certain how the visual objects in the image contribute to the humor, classify as UNKNOWN.\n"
+            "3. Be careful with the meme's vocabulary, if it uses local slang or references, it tends to be UNKNOWN.\n"
+            "4. If you are not certain how the visual objects in the image contribute to the humor and the humor idea is not clear, classify as UNKNOWN.\n"
             "5. There are local words used for emotional expresssion, you can ignore them if the humor is still clear without understanding those words.\n"
-            "Put your reasoning trace and final answer EXACTLY using the tags as follows:\n"
+            "Put your reasoning trace and your final conclusion EXACTLY using the tags as follows:\n"
             "<reason>Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.</reason>\n"
             "<answer> KNOWN or UNKNOWN </answer>"
         )
@@ -103,7 +103,7 @@ class MemeFilterVLM:
         with torch.no_grad():
             generated_ids = self.model.generate(
                 **inputs,
-                max_new_tokens=512,  # Increased to allow room for the reasoning block
+                max_new_tokens=1024,  # Increased to allow room for the reasoning block
                 temperature=0.1,  # Low temperature for highly deterministic, robotic parsing
                 do_sample=False,
             )
