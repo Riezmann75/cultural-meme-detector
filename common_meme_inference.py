@@ -74,6 +74,9 @@ class MemeFilterVLM:
             "<reason>Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.</reason>\n"
             "<answer> KNOWN or UNKNOWN </answer>"
         )
+        
+        print("Current system prompt for inference:")
+        print(system_prompt)
 
         messages = [
             {
