@@ -16,8 +16,11 @@ class MemeFilterVLM:
         print(f"Loading processor from {model_id}...")
         self.processor = AutoProcessor.from_pretrained(model_id)
 
+        # Crucial for batch generation: padding must be on the left
+        self.processor.tokenizer.padding_side = 'left'
+
         print(f"Loading {model_id} across GPUs. This may take a few minutes...")
-        # device_map="auto" is crucial here to split the 32B model across your 4 GPUs
+        # device_map="auto" is crucial here to split the 32B model across your GPUs
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_id, torch_dtype=torch.bfloat16, device_map="auto"
         )
@@ -49,18 +52,11 @@ class MemeFilterVLM:
 
         return result
 
-    def infer_meme(self, image_path):
+    def infer_meme_batch(self, image_paths):
         """
-        Analyzes a single image to determine if it's a global meme or a local/unknown one.
-        Returns a dictionary containing the structured reasoning.
+        Analyzes a batch of images to determine if they are global memes or local/unknown ones.
+        Returns a list of dictionaries containing the structured reasoning for each image.
         """
-        try:
-            image = Image.open(image_path).convert("RGB")
-        except Exception as e:
-            print(f"Error loading image {image_path}: {e}")
-            return None
-
-        # The Zero-Shot Filtering System Prompt
         system_prompt = (
             "You are an expert archivist of internet culture. "
             "Your only job is to determine if this image is a 'Common Meme'. "
@@ -78,28 +74,41 @@ class MemeFilterVLM:
             "<answer> KNOWN or UNKNOWN </answer>"
         )
 
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    # Keep max_pixels reasonable to prevent OOM errors during inference
-                    {"type": "image", "image": image},
-                    {"type": "text", "text": system_prompt},
-                ],
-            }
-        ]
+        valid_paths = []
+        messages_batch = []
 
-        # Prepare inputs exactly as Qwen2.5-VL expects
-        text = self.processor.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
-        image_inputs, video_inputs = process_vision_info(messages)
+        # 1. Load images and construct the prompt for each image in the batch
+        for path in image_paths:
+            try:
+                image = Image.open(path).convert("RGB")
+                valid_paths.append(path)
+                messages_batch.append([
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "image", "image": image},
+                            {"type": "text", "text": system_prompt},
+                        ],
+                    }
+                ])
+            except Exception as e:
+                print(f"Error loading image {path}: {e}")
+
+        if not messages_batch:
+            return []
+
+        # 2. Process texts and images for the entire batch
+        texts = [
+            self.processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=True)
+            for msg in messages_batch
+        ]
+        image_inputs, video_inputs = process_vision_info(messages_batch)
 
         inputs = self.processor(
-            text=[text], images=image_inputs, padding=True, return_tensors="pt"
+            text=texts, images=image_inputs, padding=True, return_tensors="pt"
         ).to(self.model.device)
 
-        # Generate the response
+        # 3. Generate the response for the batch
         with torch.no_grad():
             generated_ids = self.model.generate(
                 **inputs,
@@ -108,29 +117,34 @@ class MemeFilterVLM:
                 do_sample=False,
             )
 
-        # Trim off the prompt tokens from the generated output
+        # 4. Trim prompt tokens and decode
         generated_ids_trimmed = [
             out_ids[len(in_ids) :]
             for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
         ]
 
-        # Decode text
-        output_text = self.processor.batch_decode(
+        output_texts = self.processor.batch_decode(
             generated_ids_trimmed,
             skip_special_tokens=True,
             clean_up_tokenization_spaces=False,
-        )[0].strip()
+        )
 
-        # Extract tags and return
-        return self._extract_tags(output_text)
+        # 5. Extract tags and map results back to their original file paths
+        final_results = []
+        for path, text in zip(valid_paths, output_texts):
+            result = self._extract_tags(text.strip())
+            result["image_path"] = path
+            final_results.append(result)
+
+        return final_results
 
 
 def process_image_folder(
-    analyzer, base_folder, output_jsonl="meme_analysis_results.jsonl"
+    analyzer, base_folder, output_jsonl="meme_analysis_results.jsonl", batch_size=4
 ):
     """
     Scans a base folder for 'positive' and 'negative' subdirectories,
-    runs the VLM on all images, and saves the results to a JSONL file.
+    runs the VLM on all images in batches, and saves the results to a JSONL file.
     """
     from tqdm import tqdm
 
@@ -151,17 +165,29 @@ def process_image_folder(
         print(f"No images found in {base_folder}/[positive|negative]")
         return
 
-    print(f"Found {len(image_paths)} images. Starting inference...")
+    print(f"Found {len(image_paths)} images. Starting batched inference (Batch size: {batch_size})...")
+
+    # Helper function to yield batches
+    def chunker(seq, size):
+        return (seq[pos:pos + size] for pos in range(0, len(seq), size))
 
     # Process and save incrementally
     with open(output_jsonl, "a", encoding="utf-8") as f:
-        for img_path, ground_truth in tqdm(image_paths, desc="Analyzing Images"):
-            result = analyzer.infer_meme(img_path)
-            if result:
-                # Add metadata to the result so we know where it came from
-                result["image_path"] = img_path
-                result["original_folder"] = ground_truth
-                f.write(json.dumps(result, ensure_ascii=False) + "\n")
+        batches = list(chunker(image_paths, batch_size))
+        for batch in tqdm(batches, desc="Analyzing Batches"):
+            
+            # Extract just the paths for the model
+            batch_paths = [item[0] for item in batch]
+            
+            # Run batched inference
+            results = analyzer.infer_meme_batch(batch_paths)
+            
+            # Write results back with their ground truth metadata
+            for res in results:
+                # Match the image path back to its ground_truth folder ("positive" or "negative")
+                ground_truth = next((item[1] for item in batch if item[0] == res["image_path"]), "unknown")
+                res["original_folder"] = ground_truth
+                f.write(json.dumps(res, ensure_ascii=False) + "\n")
 
     print(f"\nFinished processing! Results saved to {output_jsonl}")
 
@@ -172,11 +198,13 @@ if __name__ == "__main__":
     analyzer = MemeFilterVLM()
 
     # Define your base folder containing 'positive' and 'negative' subfolders
-    # e.g., "dataset/raw_memes/vietnamese"
     TARGET_FOLDER = "dataset/sample-common-meme-detector"
 
+    # Set batch_size depending on your GPU memory (2, 4, or 8)
+    BATCH_SIZE = 2
+
     if os.path.exists(TARGET_FOLDER):
-        process_image_folder(analyzer, TARGET_FOLDER)
+        process_image_folder(analyzer, TARGET_FOLDER, batch_size=BATCH_SIZE)
     else:
         print(
             f"Please create the folder '{TARGET_FOLDER}' and add 'positive'/'negative' subfolders inside it."
