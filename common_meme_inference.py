@@ -71,6 +71,8 @@ class MemeFilterVLM:
             "specific cultural context from Southeast Asia (Vietnam, Indonesia) or there is no joke, classify it as UNKNOWN.\n"
             "2. Only classify as KNOWN if the joke relies entirely on a universally shared experience or fact.\n"
             "Put your reasoning trace and final answer EXACTLY using the tags as follows:\n"
+            "3. Be careful with the meme's vocabulary, if it uses local slang or references, it must be UNKNOWN.\n"
+            "4. If you are not certain how the visual objects in the image contribute to the humor, classify as UNKNOWN.\n"
             "<reason>Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.</reason>\n"
             "<answer> KNOWN or UNKNOWN </answer>"
         )
