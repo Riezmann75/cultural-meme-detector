@@ -70,7 +70,7 @@ class MemeFilterVLM:
             "4. Look at the overall meaning, only classify the meme as KNOWN if the humor idea relies entirely on a universally shared experience or fact.\n"
             "5. There are local words used for emotional expresssion, you can ignore them if the humor is still clear without understanding those words.\n"
             "Put your reasoning trace and your final conclusion EXACTLY using the tags as follows:\n"
-            "<reason>Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.</reason>\n"
+            "<reason>Explain your thought process step-by-step by giving your first thought about the humor idea first. Identify any text, visual tropes, or cultural markers.</reason>\n"
             "<answer> KNOWN or UNKNOWN </answer>"
         )
 
