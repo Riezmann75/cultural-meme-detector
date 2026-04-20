@@ -154,10 +154,10 @@ def get_output_dir(base_results_path="results/common-meme-detection"):
 
 def process_image_folder(analyzer, base_folder, output_folder, batch_size=4):
     """
-    Scans a base folder for 'positive' and 'negative' subdirectories,
+    Scans a base folder for 'common' and 'unknown' subdirectories,
     runs inference, and saves results to the specified output_folder.
     """
-    subdirs = ["positive", "negative"]
+    subdirs = ["common", "unknown"]
     image_paths = []
 
     # Gather all images
@@ -171,7 +171,7 @@ def process_image_folder(analyzer, base_folder, output_folder, batch_size=4):
             print(f"Warning: Subdirectory '{dir_path}' not found.")
 
     if not image_paths:
-        print(f"No images found in {base_folder}/[positive|negative]")
+        print(f"No images found in {base_folder}/[common|unknown]. Please add images and try again.")
         return
 
     # Define output file path inside the new config folder
@@ -246,5 +246,5 @@ if __name__ == "__main__":
         process_image_folder(analyzer, TARGET_FOLDER, output_dir, batch_size=BATCH_SIZE)
     else:
         print(
-            f"Please create the folder '{TARGET_FOLDER}' with 'positive'/'negative' subfolders."
+            f"Please create the folder '{TARGET_FOLDER}' with 'common'/'unknown' subfolders."
         )
