@@ -25,10 +25,10 @@ class MemeFilterVLM:
         print(f"Loading {model_id} across GPUs. This may take a few minutes...")
         # Replaced the hardcoded Qwen2_5 class with the generic AutoModelForCausalLM
         self.model = AutoModelForCausalLM.from_pretrained(
-            model_id, 
-            torch_dtype=torch.bfloat16, 
+            model_id,
+            torch_dtype=torch.bfloat16,
             device_map="auto",
-            trust_remote_code=True
+            trust_remote_code=True,
         )
         self.model.eval()
         self.system_prompt = system_prompt
@@ -52,7 +52,9 @@ class MemeFilterVLM:
             answer_text = answer_match.group(1).strip().upper()
             if "UNKNOWN" in answer_text:
                 result["status"] = "UNKNOWN"
-            elif "COMMON" in answer_text: # Adapted to look for COMMON based on new prompt
+            elif (
+                "COMMON" in answer_text
+            ):  # Adapted to look for COMMON based on new prompt
                 result["status"] = "COMMON"
             else:
                 result["status"] = answer_text
@@ -93,7 +95,7 @@ class MemeFilterVLM:
             )
             for msg in messages_batch
         ]
-        
+
         # Uses qwen_vl_utils to parse the images out of the message dictionary
         image_inputs, video_inputs = process_vision_info(messages_batch)
 
@@ -184,7 +186,9 @@ def process_image_folder(analyzer, base_folder, output_folder, batch_size=4):
         f_prompt.write(analyzer.system_prompt)
 
     print(f"Saving results to: {output_folder}")
-    print(f"Found {len(image_paths)} images. Starting batched inference (Batch size: {batch_size})...")
+    print(
+        f"Found {len(image_paths)} images. Starting batched inference (Batch size: {batch_size})..."
+    )
 
     def chunker(seq, size):
         return (seq[pos : pos + size] for pos in range(0, len(seq), size))
@@ -200,55 +204,42 @@ def process_image_folder(analyzer, base_folder, output_folder, batch_size=4):
                     (item[1] for item in batch if item[0] == res["image_path"]),
                     "unknown",
                 )
-                
+
                 ordered_res = {
                     "image_name": os.path.basename(res["image_path"]),
                     "ground_truth": ground_truth,
                     "predicted_result": res["status"],
                     "reasoning": res.get("reasoning", ""),
                     "image_path": res["image_path"],
-                    "raw_output": res.get("raw_output", "")
+                    "raw_output": res.get("raw_output", ""),
                 }
-                
+
                 f.write(json.dumps(ordered_res, ensure_ascii=False) + "\n")
 
     print(f"\nFinished processing! Results saved in {output_folder}")
 
 
 if __name__ == "__main__":
-    system_prompt = (
-        "You are an expert archivist of internet culture. "
-        "Your objective is to classify the provided image into one of two categories: COMMON or UNKNOWN.\n\n"
-        "DEFINITIONS:\n"
-        "- COMMON: A generic non-meme image (e.g., a standard photo), OR a meme whose core humor relies on universally shared human experiences, basic facts, or global internet culture (e.g., relatable daily struggles, standard reaction faces, universal emotional expressions).\n"
-        "- UNKNOWN: A meme or image that requires specific cultural context, local knowledge, or regional tropes from Southeast Asia (specifically Vietnam or Indonesia) to be fully understood.\n\n"
-        "STRICT RULES:\n"
-        "1. DO NOT GUESS. If you are not certain how the visual objects in the image contribute to the humor, or if the core joke is simply unclear, classify it as UNKNOWN.\n"
-        "2. Southeast Asian Context: If you confidently identify the humor, but it completely relies on hyper-local references, regional figures, or situations specific to Vietnam/Indonesia, classify it as UNKNOWN.\n"
-        "3. Emotional Expressions & Slang: Images purely depicting universal human emotions should be classified as COMMON. There are local words used purely for emotional expression; you may ignore them if the humor/emotion is still completely clear without understanding those specific words.\n"
-        "4. Contextual Abbreviations: When inferring the meaning of abbreviations, use the meaning that fits the context of the humor, not just the most popular internet definition.\n"
-        "5. The Universality Test: If you translate the text into English and show the image to someone in a completely different country (e.g., USA or Brazil), would they 'get' the basic idea? (e.g., A joke about a 'strict wife' interfering in an affair is a universal trope). If yes, it is COMMON. If no, it is UNKNOWN.\n\n"
-        "ANALYSIS STEPS:\n"
-        "1. Visuals: Identify the core visual subjects.\n"
-        "2. Translate: Transcribe and translate the text.\n"
-        "3. Universality Test: Evaluate the core joke based on the rules above.\n\n"
-        "OUTPUT FORMAT:\n"
-        "Put your reasoning trace and your final conclusion EXACTLY using the tags as follows:\n"
-        "<reason>\n"
-        "Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.\n"
-        "</reason>\n"
-        "<answer>\n"
-        "COMMON or UNKNOWN\n"
-        "</answer>"
-    )
-
+    system_prompt = """
+    You are an expert archivist of internet culture. Your only job is to determine if this image is a 'common image,meme or unknown'. A Common Meme is defined as a meme that it's humor idea is universally shared, a common image is a image that is not memebasic fact, or global internet culture (e.g., relatable daily struggles, standard reaction faces). Strict Rules:
+    1. DO NOT GUESS. If you can confidently identify the humor idea and it completely relies on hyper-local slang, regional figures, or requires specific cultural context from Southeast Asia (Vietnam, Indonesia), or there is no joke, classify it as UNKNOWN.
+    2. If you are not certain how the visual objects in the image contribute to the humor and the humor idea is not clear, classify as UNKNOWN.
+    3. If its' a meme, look at the overall meaning, only classify the meme as COMMON if the humor basic ideas can be understood based on a universally shared experience or fact.
+    4. There are emotional slangs, you can ignore them if the humor is still clear without understanding those words.
+    5. Don't be too strict on the slang, if the humor idea is clear and universally shared, you can classify it as COMMON even if there are some local slang.
+    Strict analysis steps:
+    1. Translate: Translate the text.
+    2. Test universality: If you translate the joke into English and show it to someone in a different country (e.g., USA or Brazil), would they 'get' the basic idea?
+    Put your reasoning trace and your final conclusion EXACTLY using the tags as follows:
+    <reason>Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.</reason>
+    <answer> COMMON or UNKNOWN </answer>
+    """
     output_dir = get_output_dir()
 
     # NOTE: Set the model_id to the exact Vision-Language variant you wish to use.
     # We default here to a generalized "Qwen/Qwen3.5-VL-27B-Instruct" to show the pattern.
     analyzer = MemeFilterVLM(
-        model_id="Qwen/Qwen3.5-VL-27B-Instruct", 
-        system_prompt=system_prompt
+        model_id="Qwen/Qwen3.5-VL-27B-Instruct", system_prompt=system_prompt
     )
 
     TARGET_FOLDER = "dataset/sample-common-meme-detector"
