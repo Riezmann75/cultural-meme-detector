@@ -133,7 +133,7 @@ def get_output_dir(base_results_path="results/common-meme-detection"):
 
     # 2. Determine config_X folder name
     existing_configs = [d for d in os.listdir(date_path) if d.startswith("config_")]
-    
+
     # Extract numbers and find the next one
     config_numbers = []
     for d in existing_configs:
@@ -142,19 +142,17 @@ def get_output_dir(base_results_path="results/common-meme-detection"):
             config_numbers.append(num)
         except (ValueError, IndexError):
             continue
-            
+
     next_num = max(config_numbers) + 1 if config_numbers else 1
     config_folder_name = f"config_{next_num}"
-    
+
     config_path = os.path.join(date_path, config_folder_name)
     os.makedirs(config_path, exist_ok=True)
-    
+
     return config_path
 
 
-def process_image_folder(
-    analyzer, base_folder, output_folder, batch_size=4
-):
+def process_image_folder(analyzer, base_folder, output_folder, batch_size=4):
     """
     Scans a base folder for 'positive' and 'negative' subdirectories,
     runs inference, and saves results to the specified output_folder.
@@ -178,14 +176,16 @@ def process_image_folder(
 
     # Define output file path inside the new config folder
     output_jsonl = os.path.join(output_folder, "meme_analysis_results.jsonl")
-    
+
     # Save the prompt for reproducibility
     prompt_file = os.path.join(output_folder, "prompt.txt")
     with open(prompt_file, "w", encoding="utf-8") as f_prompt:
         f_prompt.write(analyzer.system_prompt)
 
     print(f"Saving results to: {output_folder}")
-    print(f"Found {len(image_paths)} images. Starting batched inference (Batch size: {batch_size})...")
+    print(
+        f"Found {len(image_paths)} images. Starting batched inference (Batch size: {batch_size})..."
+    )
 
     def chunker(seq, size):
         return (seq[pos : pos + size] for pos in range(0, len(seq), size))
@@ -218,10 +218,11 @@ if __name__ == "__main__":
         "specific cultural context from Southeast Asia (Vietnam, Indonesia), or there is no joke, classify it as UNKNOWN.\n"
         "2. Be careful with the meme's vocabulary, if it uses local slang or references, it tends to be UNKNOWN.\n"
         "3. If you are not certain how the visual objects in the image contribute to the humor and the humor idea is not clear, classify as UNKNOWN.\n"
-        "4. Look at the overall meaning, only classify the meme as KNOWN if the humor idea relies entirely on a universally shared experience or fact.\n"
-        "5. There are local words used for emotional expresssion, you can ignore them if the humor is still clear without understanding those words.\n"
+        "4. If you are not certain how intentions present in the image relate to each other and to the humor idea, classify as UNKNOWN.\n"
+        "5. Look at the overall meaning, only classify the meme as KNOWN if the humor idea relies entirely on a universally shared experience or fact.\n"
+        "6. There are local words used for emotional expresssion, you can ignore them if the humor is still clear without understanding those words.\n"
         "Strict analysis steps:\n"
-        "1. Translate: Translate the text. Does the text set up a scenario and then subvert it?\n"
+        "1. Translate: Translate the text.\n"
         "2. Test universality: If you translate the joke into English and show it to someone in a different country (e.g., USA or Brazil), would they 'get' the joke? (e.g., A joke about a 'strict wife' interfering in an affair is a universal trope).\n"
         "Put your reasoning trace and your final conclusion EXACTLY using the tags as follows:\n"
         "<reason>Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.</reason>\n"
@@ -241,4 +242,6 @@ if __name__ == "__main__":
     if os.path.exists(TARGET_FOLDER):
         process_image_folder(analyzer, TARGET_FOLDER, output_dir, batch_size=BATCH_SIZE)
     else:
-        print(f"Please create the folder '{TARGET_FOLDER}' with 'positive'/'negative' subfolders.")
+        print(
+            f"Please create the folder '{TARGET_FOLDER}' with 'positive'/'negative' subfolders."
+        )
