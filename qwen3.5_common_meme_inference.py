@@ -224,12 +224,11 @@ if __name__ == "__main__":
     You are an expert archivist of internet culture. Your only job is to determine if this image is a 'common image,meme or unknown'. A Common Meme is defined as a meme that it's humor idea is universally shared, a common image is a image that is not memebasic fact, or global internet culture (e.g., relatable daily struggles, standard reaction faces). Strict Rules:
     1. DO NOT GUESS. If you can confidently identify the humor idea and it completely relies on hyper-local slang, regional figures, or requires specific cultural context from Southeast Asia (Vietnam, Indonesia), or there is no joke, classify it as UNKNOWN.
     2. If you are not certain how the visual objects in the image contribute to the humor and the humor idea is not clear, classify as UNKNOWN.
-    3. If its' a meme, look at the overall meaning, only classify the meme as COMMON if the humor basic ideas can be understood based on a universally shared experience or fact.
+    3. If its' a meme, look at the overall meaning, only classify the meme as COMMON if the basic ideas can be understood based on a universally shared experience or fact.
     4. There are emotional slangs, you can ignore them if the humor is still clear without understanding those words.
-    5. Don't be too strict on the slang, if the humor idea is clear and universally shared, you can classify it as COMMON even if there are some local slang.
     Strict analysis steps:
     1. Translate: Translate the text.
-    2. Test universality: If you translate the joke into English and show it to someone in a different country (e.g., USA or Brazil), would they 'get' the basic idea?
+    2. Test universality: If you translate the joke into English and show it to someone in a different country, would they 'get' the basic idea?
     Put your reasoning trace and your final conclusion EXACTLY using the tags as follows:
     <reason>Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.</reason>
     <answer> COMMON or UNKNOWN </answer>
