@@ -239,7 +239,7 @@ if __name__ == "__main__":
     # NOTE: Set the model_id to the exact Vision-Language variant you wish to use.
     # We default here to a generalized "Qwen/Qwen3.5-VL-27B-Instruct" to show the pattern.
     analyzer = MemeFilterVLM(
-        model_id="Qwen/Qwen3.5-VL-27B-Instruct", system_prompt=system_prompt
+        model_id="Qwen/Qwen3.5-27B", system_prompt=system_prompt
     )
 
     TARGET_FOLDER = "dataset/sample-common-meme-detector"
