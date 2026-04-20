@@ -131,7 +131,7 @@ class MemeFilterVLM:
         return final_results
 
 
-def get_output_dir(base_results_path="results/common-meme-detection"):
+def get_output_dir(base_results_path="results/common-meme-detection/qwen-3.5"):
     """
     Creates and returns the directory path: base/YYYYMMDD/config_[X]
     """
