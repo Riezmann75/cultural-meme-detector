@@ -229,6 +229,7 @@ if __name__ == "__main__":
         "2. If you are not certain how the visual objects in the image contribute to the humor and the humor idea is not clear, classify as UNKNOWN.\n"
         "3. If its' a meme, look at the overall meaning, only classify the meme as COMMON if the humor basic ideas can be understood based on a universally shared experience or fact.\n"
         "4. There are emotional slangs, you can ignore them if the humor is still clear without understanding those words.\n"
+        "5. When inferring abbreviation, use the meaning that is applicable to the humor idea, not the most popular meaning on the internet.\n"
         "Strict analysis steps:\n"
         "1. Translate: Translate the text.\n"
         "2. Test universality: If you translate the joke into English and show it to someone in a different country (e.g., USA or Brazil), would they 'get' the basic idea?\n"
