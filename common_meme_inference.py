@@ -201,8 +201,18 @@ def process_image_folder(analyzer, base_folder, output_folder, batch_size=4):
                     (item[1] for item in batch if item[0] == res["image_path"]),
                     "unknown",
                 )
-                res["original_folder"] = ground_truth
-                f.write(json.dumps(res, ensure_ascii=False) + "\n")
+
+                # Reorder keys by creating a new dictionary with preferred insertion order
+                ordered_res = {
+                    "image_name": os.path.basename(res["image_path"]),
+                    "ground_truth": ground_truth,
+                    "predicted_result": res["status"],
+                    "reasoning": res.get("reasoning", ""),
+                    "image_path": res["image_path"],
+                    "raw_output": res.get("raw_output", ""),
+                }
+
+                f.write(json.dumps(ordered_res, ensure_ascii=False) + "\n")
 
     print(f"\nFinished processing! Results saved in {output_folder}")
 
