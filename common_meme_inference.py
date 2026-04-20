@@ -218,31 +218,19 @@ def process_image_folder(analyzer, base_folder, output_folder, batch_size=4):
 
 
 if __name__ == "__main__":
-    system_prompt = (
-        "You are an expert archivist of internet culture. "
-        "Your objective is to classify the provided image into one of two categories: COMMON or UNKNOWN.\n\n"
-        "DEFINITIONS:\n"
-        "- COMMON: A generic non-meme image (e.g., a standard photo), OR a meme whose core humor relies on universally shared human experiences, basic facts, or global internet culture (e.g., relatable daily struggles, standard reaction faces, universal emotional expressions).\n"
-        "- UNKNOWN: A meme or image that requires specific cultural context, local knowledge, or regional tropes from Southeast Asia (specifically Vietnam or Indonesia) to be fully understood.\n\n"
-        "STRICT RULES:\n"
-        "1. DO NOT GUESS. If you are not certain how the visual objects in the image contribute to the humor, or if the core joke is simply unclear, classify it as UNKNOWN.\n"
-        "2. Southeast Asian Context: If you confidently identify the humor, but it completely relies on hyper-local references, regional figures, or situations specific to Vietnam/Indonesia, classify it as UNKNOWN.\n"
-        "3. Emotional Expressions & Slang: Images purely depicting universal human emotions should be classified as COMMON. There are local words used purely for emotional expression; you may ignore them if the humor/emotion is still completely clear without understanding those specific words.\n"
-        "4. Contextual Abbreviations: When inferring the meaning of abbreviations, use the meaning that fits the context of the humor, not just the most popular internet definition.\n"
-        "5. The Universality Test: If you translate the text into English and show the image to someone in a completely different country (e.g., USA or Brazil), would they 'get' the basic idea? (e.g., A joke about a 'strict wife' interfering in an affair is a universal trope). If yes, it is COMMON. If no, it is UNKNOWN.\n\n"
-        "ANALYSIS STEPS:\n"
-        "1. Visuals: Identify the core visual subjects.\n"
-        "2. Translate: Transcribe and translate the text.\n"
-        "3. Universality Test: Evaluate the core joke based on the rules above.\n\n"
-        "OUTPUT FORMAT:\n"
-        "Put your reasoning trace and your final conclusion EXACTLY using the tags as follows:\n"
-        "<reason>\n"
-        "Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.\n"
-        "</reason>\n"
-        "<answer>\n"
-        "COMMON or UNKNOWN\n"
-        "</answer>"
-    )
+    system_prompt = """
+    You are an expert archivist of internet culture. Your only job is to determine if this image is a 'common image,meme or unknown'. A Common Meme is defined as a meme that it's humor idea is universally shared, a common image is a image that is not memebasic fact, or global internet culture (e.g., relatable daily struggles, standard reaction faces). Strict Rules:
+    1. DO NOT GUESS. If you can confidently identify the humor idea and it completely relies on hyper-local slang, regional figures, or requires specific cultural context from Southeast Asia (Vietnam, Indonesia), or there is no joke, classify it as UNKNOWN.
+    2. If you are not certain how the visual objects in the image contribute to the humor and the humor idea is not clear, classify as UNKNOWN.
+    3. If its' a meme, look at the overall meaning, only classify the meme as COMMON if the humor basic ideas can be understood based on a universally shared experience or fact.
+    4. There are emotional slangs, you can ignore them if the humor is still clear without understanding those words.
+    Strict analysis steps:
+    1. Translate: Translate the text.
+    2. Test universality: If you translate the joke into English and show it to someone in a different country (e.g., USA or Brazil), would they 'get' the basic idea?
+    Put your reasoning trace and your final conclusion EXACTLY using the tags as follows:
+    <reason>Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.</reason>
+    <answer> COMMON or UNKNOWN </answer>
+    """
 
     # Prepare output directory
     output_dir = get_output_dir()
