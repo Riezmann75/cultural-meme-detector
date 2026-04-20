@@ -210,7 +210,7 @@ def process_image_folder(analyzer, base_folder, output_folder, batch_size=4):
 if __name__ == "__main__":
     system_prompt = (
         "You are an expert archivist of internet culture. "
-        "Your only job is to determine if this image is a 'common image/meme'. "
+        "Your only job is to determine if this image is a 'common image,meme or unknown'. "
         "A Common Meme is defined as a meme that it's humor idea is universally shared, a common image is a image that is not meme"
         "basic fact, or global internet culture (e.g., relatable daily struggles, standard reaction faces). "
         "Strict Rules:\n"
