@@ -218,7 +218,7 @@ def process_image_folder(analyzer, base_folder, output_folder, batch_size=4):
 
 
 if __name__ == "__main__":
-        system_prompt = (
+    system_prompt = (
         "You are an expert archivist of internet culture. "
         "Your objective is to classify the provided image into one of two categories: COMMON or UNKNOWN.\n\n"
         "DEFINITIONS:\n"
