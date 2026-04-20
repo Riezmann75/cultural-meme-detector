@@ -2,9 +2,11 @@ import os
 import re
 import json
 import torch
+from datetime import datetime
 from PIL import Image
 from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
 from qwen_vl_utils import process_vision_info
+from tqdm import tqdm
 
 
 class MemeFilterVLM:
@@ -20,7 +22,6 @@ class MemeFilterVLM:
         self.processor.tokenizer.padding_side = "left"
 
         print(f"Loading {model_id} across GPUs. This may take a few minutes...")
-        # device_map="auto" is crucial here to split the 32B model across your GPUs
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_id, torch_dtype=torch.bfloat16, device_map="auto"
         )
@@ -56,30 +57,10 @@ class MemeFilterVLM:
     def infer_meme_batch(self, image_paths):
         """
         Analyzes a batch of images to determine if they are global memes or local/unknown ones.
-        Returns a list of dictionaries containing the structured reasoning for each image.
         """
-        if self.system_prompt is None:
-            self.system_prompt = (
-                "You are an expert archivist of internet culture. "
-                "Your only job is to determine if this image is a 'Common Meme'. "
-                "A Common Meme is defined as a meme that it's humor idea is universally shared, "
-                "basic fact, or global internet culture (e.g., relatable daily struggles, standard reaction faces). "
-                "Strict Rules:\n"
-                "1. DO NOT GUESS. If you can confidently identify the humor idea and it completely relies on hyper-local slang, regional figures, or requires "
-                "specific cultural context from Southeast Asia (Vietnam, Indonesia), or there is no joke, classify it as UNKNOWN.\n"
-                "2. Be careful with the meme's vocabulary, if it uses local slang or references, it tends to be UNKNOWN.\n"
-                "3. If you are not certain how the visual objects in the image contribute to the humor and the humor idea is not clear, classify as UNKNOWN.\n"
-                "4. Look at the overall meaning, only classify the meme as KNOWN if the humor idea relies entirely on a universally shared experience or fact.\n"
-                "5. There are local words used for emotional expresssion, you can ignore them if the humor is still clear without understanding those words.\n"
-                "Put your reasoning trace and your final conclusion EXACTLY using the tags as follows:\n"
-                "<reason>Explain your thought process step-by-step by giving your first thought about the humor idea first. Identify any text, visual tropes, or cultural markers.</reason>\n"
-                "<answer> KNOWN or UNKNOWN </answer>"
-            )
-
         valid_paths = []
         messages_batch = []
 
-        # 1. Load images and construct the prompt for each image in the batch
         for path in image_paths:
             try:
                 image = Image.open(path).convert("RGB")
@@ -101,7 +82,6 @@ class MemeFilterVLM:
         if not messages_batch:
             return []
 
-        # 2. Process texts and images for the entire batch
         texts = [
             self.processor.apply_chat_template(
                 msg, tokenize=False, add_generation_prompt=True
@@ -114,16 +94,14 @@ class MemeFilterVLM:
             text=texts, images=image_inputs, padding=True, return_tensors="pt"
         ).to(self.model.device)
 
-        # 3. Generate the response for the batch
         with torch.no_grad():
             generated_ids = self.model.generate(
                 **inputs,
-                max_new_tokens=1024,  # Increased to allow room for the reasoning block
-                temperature=0.1,  # Low temperature for highly deterministic, robotic parsing
+                max_new_tokens=1024,
+                temperature=0.1,
                 do_sample=False,
             )
 
-        # 4. Trim prompt tokens and decode
         generated_ids_trimmed = [
             out_ids[len(in_ids) :]
             for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
@@ -135,7 +113,6 @@ class MemeFilterVLM:
             clean_up_tokenization_spaces=False,
         )
 
-        # 5. Extract tags and map results back to their original file paths
         final_results = []
         for path, text in zip(valid_paths, output_texts):
             result = self._extract_tags(text.strip())
@@ -145,15 +122,43 @@ class MemeFilterVLM:
         return final_results
 
 
+def get_output_dir(base_results_path="results/common-meme-detection"):
+    """
+    Creates and returns the directory path: base/YYYYMMDD/config_[X]
+    """
+    # 1. Create date folder
+    date_str = datetime.now().strftime("%Y%m%d")
+    date_path = os.path.join(base_results_path, date_str)
+    os.makedirs(date_path, exist_ok=True)
+
+    # 2. Determine config_X folder name
+    existing_configs = [d for d in os.listdir(date_path) if d.startswith("config_")]
+    
+    # Extract numbers and find the next one
+    config_numbers = []
+    for d in existing_configs:
+        try:
+            num = int(d.split("_")[1])
+            config_numbers.append(num)
+        except (ValueError, IndexError):
+            continue
+            
+    next_num = max(config_numbers) + 1 if config_numbers else 1
+    config_folder_name = f"config_{next_num}"
+    
+    config_path = os.path.join(date_path, config_folder_name)
+    os.makedirs(config_path, exist_ok=True)
+    
+    return config_path
+
+
 def process_image_folder(
-    analyzer, base_folder, output_jsonl="meme_analysis_results.jsonl", batch_size=4
+    analyzer, base_folder, output_folder, batch_size=4
 ):
     """
     Scans a base folder for 'positive' and 'negative' subdirectories,
-    runs the VLM on all images in batches, and saves the results to a JSONL file.
+    runs inference, and saves results to the specified output_folder.
     """
-    from tqdm import tqdm
-
     subdirs = ["positive", "negative"]
     image_paths = []
 
@@ -171,28 +176,27 @@ def process_image_folder(
         print(f"No images found in {base_folder}/[positive|negative]")
         return
 
-    print(
-        f"Found {len(image_paths)} images. Starting batched inference (Batch size: {batch_size})..."
-    )
+    # Define output file path inside the new config folder
+    output_jsonl = os.path.join(output_folder, "meme_analysis_results.jsonl")
+    
+    # Save the prompt for reproducibility
+    prompt_file = os.path.join(output_folder, "prompt.txt")
+    with open(prompt_file, "w", encoding="utf-8") as f_prompt:
+        f_prompt.write(analyzer.system_prompt)
 
-    # Helper function to yield batches
+    print(f"Saving results to: {output_folder}")
+    print(f"Found {len(image_paths)} images. Starting batched inference (Batch size: {batch_size})...")
+
     def chunker(seq, size):
         return (seq[pos : pos + size] for pos in range(0, len(seq), size))
 
-    # Process and save incrementally
     with open(output_jsonl, "a", encoding="utf-8") as f:
         batches = list(chunker(image_paths, batch_size))
         for batch in tqdm(batches, desc="Analyzing Batches"):
-
-            # Extract just the paths for the model
             batch_paths = [item[0] for item in batch]
-
-            # Run batched inference
             results = analyzer.infer_meme_batch(batch_paths)
 
-            # Write results back with their ground truth metadata
             for res in results:
-                # Match the image path back to its ground_truth folder ("positive" or "negative")
                 ground_truth = next(
                     (item[1] for item in batch if item[0] == res["image_path"]),
                     "unknown",
@@ -200,12 +204,10 @@ def process_image_folder(
                 res["original_folder"] = ground_truth
                 f.write(json.dumps(res, ensure_ascii=False) + "\n")
 
-    print(f"\nFinished processing! Results saved to {output_jsonl}")
+    print(f"\nFinished processing! Results saved in {output_folder}")
 
 
-# --- Quick Test Block ---
 if __name__ == "__main__":
-
     system_prompt = (
         "You are an expert archivist of internet culture. "
         "Your only job is to determine if this image is a 'Common Meme'. "
@@ -226,20 +228,17 @@ if __name__ == "__main__":
         "<answer> KNOWN or UNKNOWN </answer>"
     )
 
+    # Prepare output directory
+    output_dir = get_output_dir()
+
     # Initialize the class
     analyzer = MemeFilterVLM(system_prompt=system_prompt)
 
-    # Define your base folder containing 'positive' and 'negative' subfolders
+    # Dataset path
     TARGET_FOLDER = "dataset/sample-common-meme-detector"
-
-    # Set batch_size depending on your GPU memory (2, 4, or 8)
     BATCH_SIZE = 4
 
-    print("System prompt for the VLM:\n", system_prompt)
-
     if os.path.exists(TARGET_FOLDER):
-        process_image_folder(analyzer, TARGET_FOLDER, batch_size=BATCH_SIZE)
+        process_image_folder(analyzer, TARGET_FOLDER, output_dir, batch_size=BATCH_SIZE)
     else:
-        print(
-            f"Please create the folder '{TARGET_FOLDER}' and add 'positive'/'negative' subfolders inside it."
-        )
+        print(f"Please create the folder '{TARGET_FOLDER}' with 'positive'/'negative' subfolders.")
