@@ -1,0 +1,31 @@
+#!/bin/bash
+#PBS -l walltime=20:00:00
+#PBS -l select=1:ngpus=4
+#PBS -q ai
+#PBS -P 12004268
+#PBS -N qwen3.5_infer_common_meme
+#PBS -j oe
+#PBS -o /home/project/12004268/giabao/cultural-meme-detector/out_qwen3.5_infer_common_meme.txt
+#PBS -m abe
+#PBS -M giabao.cao@ntu.edu.sg
+
+cd /home/project/12004268/giabao/cultural-meme-detector #need to change directory to the project folder first
+
+#activating conda environment
+source activate base
+conda activate 5.3.0
+
+#check
+conda info --envs
+
+nvidia-smi -L
+echo $CUDA_VISIBLE_DEVICES
+
+TORCH_LOGS="+dynamo"
+TORCHDYNAMO_VERBOSE=1
+
+#run the file
+export HF_HOME="/home/users/ntu/giabaoca/myProject-12004268/giabao/hf_cache"
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_LAUNCH_BLOCKING=1
+python qwen3.5_common_meme_inference.py
