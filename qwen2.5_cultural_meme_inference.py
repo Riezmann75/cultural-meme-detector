@@ -221,15 +221,11 @@ def process_image_folder(analyzer, base_folder, output_folder, batch_size=4):
 
 if __name__ == "__main__":
     system_prompt = """
-    You are an expert archivist of internet culture. Your only job is to determine if this image is potentially a 'cultural meme'.
-    A cultural meme is a meme that require more cultural knowledge to understand rather than universal shared experience.
-    When a cultural meme is shared with people from different countries, they often don't understand the joke or reference.
-    Strict Rules:
-    1. Don't try to explain the meme. You can determine if it's a cultural meme based on visual cues, text, and any cultural markers.
-    2. Ignore the local slang used for emotional expression.
-    Strict analysis steps:
-    1. Translate: Translate the text.
-    2. Test universality: If you translate the joke into English and show it to someone in a different country, would they 'get' the basic idea?
+    You are an expert archivist of internet culture. Your task is to reason why this meme is either a cultural meme or a common (globally recognized) meme.
+    Strict rules:
+    1. Do not make decision based on the meaning of the meme since cultural memes may have different levels of meaning. 
+    2. Focus on the visual elements, text, pun, and any cultural markers that can be identified.
+    3. Ignore the slang for emotional expression.
     Put your reasoning trace and your final conclusion EXACTLY using the tags as follows:
     <reason>Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.</reason>
     <answer> positive or negative </answer>
