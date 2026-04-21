@@ -3,9 +3,9 @@
 #PBS -l select=1:ngpus=4
 #PBS -q ai
 #PBS -P 12004268
-#PBS -N infer_common_meme
+#PBS -N infer_qwen2.5_common_meme
 #PBS -j oe
-#PBS -o /home/project/12004268/giabao/cultural-meme-detector/out_infer_common_meme.txt
+#PBS -o /home/project/12004268/giabao/cultural-meme-detector/out_infer_qwen2.5_common_meme.txt
 #PBS -m abe
 #PBS -M giabao.cao@ntu.edu.sg
 
@@ -28,4 +28,4 @@ TORCHDYNAMO_VERBOSE=1
 export HF_HOME="/home/users/ntu/giabaoca/myProject-12004268/giabao/hf_cache"
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 export CUDA_LAUNCH_BLOCKING=1
-python common_meme_inference.py
+python qwen2.5_common_meme_inference.py
