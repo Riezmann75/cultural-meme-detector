@@ -36,21 +36,10 @@ class MemeFilterVLM:
         reason_match = re.search(
             r"<reason>(.*?)</reason>", text, re.DOTALL | re.IGNORECASE
         )
-        answer_match = re.search(
-            r"<answer>(.*?)</answer>", text, re.DOTALL | re.IGNORECASE
-        )
 
         if reason_match:
             result["reasoning"] = reason_match.group(1).strip()
 
-        if answer_match:
-            answer_text = answer_match.group(1).strip().upper()
-            if "negative" in answer_text:
-                result["status"] = "negative"
-            elif "KNOWN" in answer_text:
-                result["status"] = "KNOWN"
-            else:
-                result["status"] = answer_text
 
         return result
 
@@ -233,9 +222,8 @@ if __name__ == "__main__":
     1. Do not make decision based on the meaning of the meme since cultural memes may have different levels of meaning. 
     2. Focus on the visual elements, text, pun, and any cultural markers that can be identified.
     3. Ignore the slang for emotional expression.
-    Put your reasoning trace and your final conclusion EXACTLY using the tags as follows:
+    Put your reasoning trace EXACTLY using the tags as follows:
     <reason>Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.</reason>
-    <answer> positive or negative </answer>
     
     Here is the label for the image below: {label}
     """
