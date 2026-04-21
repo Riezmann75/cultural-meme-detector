@@ -54,24 +54,28 @@ class MemeFilterVLM:
 
         return result
 
-    def infer_meme_batch(self, image_paths):
+    def infer_meme_batch(self, image_paths, labels):
         """
         Analyzes a batch of images to determine if they are global memes or local/negative ones.
         """
         valid_paths = []
         messages_batch = []
 
-        for path in image_paths:
+        for path, label in zip(image_paths, labels):
             try:
                 image = Image.open(path).convert("RGB")
                 valid_paths.append(path)
+                
+                # Dynamically inject the ground truth label into the prompt
+                formatted_prompt = self.system_prompt.format(label=label)
+                
                 messages_batch.append(
                     [
                         {
                             "role": "user",
                             "content": [
                                 {"type": "image", "image": image},
-                                {"type": "text", "text": self.system_prompt},
+                                {"type": "text", "text": formatted_prompt},
                             ],
                         }
                     ]
@@ -196,7 +200,10 @@ def process_image_folder(analyzer, base_folder, output_folder, batch_size=4):
         batches = list(chunker(image_paths, batch_size))
         for batch in tqdm(batches, desc="Analyzing Batches"):
             batch_paths = [item[0] for item in batch]
-            results = analyzer.infer_meme_batch(batch_paths)
+            batch_labels = [item[1] for item in batch]
+            
+            # Pass both the paths and their corresponding labels
+            results = analyzer.infer_meme_batch(batch_paths, batch_labels)
 
             for res in results:
                 ground_truth = next(
@@ -221,7 +228,7 @@ def process_image_folder(analyzer, base_folder, output_folder, batch_size=4):
 
 if __name__ == "__main__":
     system_prompt = """
-    You are an expert archivist of internet culture. Your task is to reason why this meme is either a cultural meme or a common (globally recognized) meme.
+    You are an expert archivist of internet culture. Given the label, your task is to reason why this meme is either a cultural meme or a common (globally recognized) meme.
     Strict rules:
     1. Do not make decision based on the meaning of the meme since cultural memes may have different levels of meaning. 
     2. Focus on the visual elements, text, pun, and any cultural markers that can be identified.
@@ -229,6 +236,8 @@ if __name__ == "__main__":
     Put your reasoning trace and your final conclusion EXACTLY using the tags as follows:
     <reason>Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.</reason>
     <answer> positive or negative </answer>
+    
+    Here is the label for the image below: {label}
     """
 
     # Prepare output directory
