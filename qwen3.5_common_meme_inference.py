@@ -288,7 +288,7 @@ if __name__ == "__main__":
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    reasoning_tags: tuple = (("<reason>", "</reason>"),)
+    reasoning_tags: tuple = ("<reason>", "</reason>")
     new_key = "reason"
 
     for batch in tqdm(dataloader, desc="Processing image batches"):
