@@ -264,7 +264,7 @@ if __name__ == "__main__":
 
     dataloader, dataset = create_dataloader(
         model=model,
-        image_root="dataset/sample-cultural-meme-detector/positive",
+        image_root="dataset/sample-cultural-meme-detector/all",
         system_prompt=(
             "You are an expert archivist of internet culture. Your task is to classify and explain why this meme should be categorized as either a cultural meme or a common meme.\n"
             "A cultural meme is a meme that may require specific cultural knowledge, context, or references to understand and appreciate. When translated, the cultural context may be lost or the meme may not be understood in the same way.\n"
@@ -345,6 +345,7 @@ if __name__ == "__main__":
             batch_indices, responses_list, generated_texts
         ):
             data = {}
+            data["image_path"] = dataset.image_root + "/" + os.listdir(dataset.image_root)[idx]
             data[new_key] = response
             data["raw_generated_text"] = raw_text
 
