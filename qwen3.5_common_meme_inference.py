@@ -1,146 +1,234 @@
+from datetime import datetime
+import json
 import os
 import re
-import json
+
 import torch
-from datetime import datetime
-from PIL import Image
-from transformers import AutoProcessor, AutoModelForCausalLM
-from qwen_vl_utils import process_vision_info
+from torch.utils.data import Dataset
+
 from tqdm import tqdm
+from transformers import (
+    AutoProcessor,
+    AutoTokenizer,
+)
+from PIL import Image
+from qwen_vl_utils import process_vision_info
 
 
-class MemeFilterVLM:
-    def __init__(self, model_id="Qwen/Qwen3.5-VL-27B-Instruct", system_prompt=None):
-        """
-        Initializes the Qwen3.5 model dynamically using generic Auto classes.
-        Automatically distributes the weights across available GPUs.
-        """
-        print(f"Loading processor from {model_id}...")
-        # trust_remote_code=True allows loading new/custom architectures not natively in transformers yet
-        self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
-
-        # Crucial for batch generation: padding must be on the left
-        self.processor.tokenizer.padding_side = "left"
-
-        print(f"Loading {model_id} across GPUs. This may take a few minutes...")
-        # Replaced the hardcoded Qwen2_5 class with the generic AutoModelForCausalLM
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            torch_dtype=torch.bfloat16,
-            device_map="auto",
-            trust_remote_code=True,
-        )
-        self.model.eval()
+class MemeQADataset(Dataset):
+    def __init__(
+        self,
+        model,
+        image_root,
+        system_prompt: str,
+    ):
         self.system_prompt = system_prompt
-        print("Model loaded successfully!")
+        self.model = model
+        self.image_root = image_root
 
-    def _extract_tags(self, text):
-        """Helper function to safely extract content from <reason> and <answer> tags."""
-        result = {"status": "PARSE_ERROR", "reasoning": "", "raw_output": text}
+    def __len__(self):
+        return len(os.listdir(self.image_root))
 
-        reason_match = re.search(
-            r"<reason>(.*?)</reason>", text, re.DOTALL | re.IGNORECASE
+    def __getitem__(self, idx):
+        image_name = os.listdir(self.image_root)[idx]
+        image_path = f"{self.image_root}/{image_name}"
+        # config = {
+        #     "tokenize": True,
+        #     "add_generation_prompt": True,
+        #     "return_dict": True,
+        #     "return_tensors": "pt",
+        # }
+        input = self.model.process_input(
+            image_path=image_path,
+            question=self.system_prompt,
         )
-        answer_match = re.search(
-            r"<answer>(.*?)</answer>", text, re.DOTALL | re.IGNORECASE
+
+        return {
+            "input_ids": input["input_ids"],
+            "attention_mask": input["attention_mask"],
+            "pixel_values": input["pixel_values"],
+            "image_grid_thw": input["image_grid_thw"],
+            "original_idx": idx,
+        }
+
+
+def collate_fn(batch, tokenizer=None):
+
+    pixel_values = tuple([item["pixel_values"] for item in batch])
+    image_grid_thw = tuple([item["image_grid_thw"] for item in batch])
+
+    max_length = max(input["input_ids"].shape[1] for input in batch)
+    batch_size = len(batch)
+
+    pad_token_id = tokenizer.eos_token_id if tokenizer is not None else 0
+
+    attn_mask = torch.zeros((batch_size, max_length), dtype=torch.long)
+    input_ids = torch.full(
+        (batch_size, max_length), fill_value=pad_token_id, dtype=torch.long
+    )
+
+    original_indices = [item["original_idx"] for item in batch]
+
+    for i, input in enumerate(batch):
+        length = input["input_ids"].shape[1]
+        input_ids[i, -length:] = input["input_ids"]
+        attn_mask[i, -length:] = 1
+
+    # note: not sure about the correct way to batch the pixel values
+    # at the moment this seems to work with Qwen3-VL-8B-Instruct
+    # but not sure why this works
+    # the forward method of Qwen3-VL-8B says it expects pixel values of shape (batch_size, num_channels, height, width)
+    # but the pixel values after processing an input is of shape (height x width, num_channels)
+    # the torch.cat is done on dimension 0
+    # TODO: check the pixel values concatenations
+    inputs = {
+        "input_ids": input_ids,
+        "attention_mask": attn_mask,
+        "original_indices": original_indices,
+        "pixel_values": torch.cat(
+            pixel_values, dim=0
+        ),  # need to cat the pixel values, but not sure if this is the correct way to batch the pixel values
+        "image_grid_thw": torch.cat(
+            image_grid_thw, dim=0
+        ),  # need to cat the image_grid_thw
+    }
+
+    return inputs
+
+
+def create_dataloader(
+    model,
+    image_root,
+    system_prompt: str,
+    batch_size=1,
+    num_workers=1,
+):
+    dataset = MemeQADataset(
+        model=model,
+        image_root=image_root,
+        system_prompt=system_prompt,
+    )
+
+    dataloader = torch.utils.data.DataLoader(
+        dataset=dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        collate_fn=lambda batch: collate_fn(
+            batch,
+            tokenizer=model.tokenizer,
+        ),
+    )
+
+    return dataloader, dataset
+
+
+class BaseModel:
+    def __init__(self):
+        """
+        Base model class for vision-language tasks.
+        """
+        self.generator = None
+        self.processor = None
+
+    def process_input(
+        self,
+        image_path,
+        init_prompt,
+        question,
+        **configs,
+    ):
+        pass
+
+    def generate(self, **kwargs):
+        pass
+
+    def parse_batched_input(self, batch_inputs):
+        # override this function if the model requires special parsing of batched inputs before feeding into the model
+        pass
+
+    # def _generate_config(self):
+    #     pass
+
+
+class Qwen35(BaseModel):
+    def __init__(self, model_str="Qwen/Qwen3.5-9B"):
+        super().__init__()
+
+        from transformers import Qwen3_5ForConditionalGeneration
+
+        self.generator = Qwen3_5ForConditionalGeneration.from_pretrained(
+            model_str, dtype="auto", device_map="auto"
         )
 
-        if reason_match:
-            result["reasoning"] = reason_match.group(1).strip()
+        self.processor = AutoProcessor.from_pretrained(
+            model_str,
+            use_fast=True,
+        )
 
-        if answer_match:
-            answer_text = answer_match.group(1).strip().upper()
-            if "UNKNOWN" in answer_text:
-                result["status"] = "UNKNOWN"
-            elif (
-                "COMMON" in answer_text
-            ):  # Adapted to look for COMMON based on new prompt
-                result["status"] = "COMMON"
-            else:
-                result["status"] = answer_text
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_str,
+            use_fast=True,
+        )
 
-        return result
+    def process_input(
+        self,
+        image_path,
+        question,
+    ):
 
-    def infer_meme_batch(self, image_paths):
-        """
-        Analyzes a batch of images to determine if they are common memes or local/unknown ones.
-        """
-        valid_paths = []
-        messages_batch = []
-
-        for path in image_paths:
-            try:
-                image = Image.open(path).convert("RGB")
-                valid_paths.append(path)
-                messages_batch.append(
-                    [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "image", "image": image},
-                                {"type": "text", "text": self.system_prompt},
-                            ],
-                        }
-                    ]
-                )
-            except Exception as e:
-                print(f"Error loading image {path}: {e}")
-
-        if not messages_batch:
-            return []
-
-        texts = [
-            self.processor.apply_chat_template(
-                msg, tokenize=False, add_generation_prompt=True
-            )
-            for msg in messages_batch
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "image": Image.open(image_path),
+                    },
+                    {
+                        "type": "text",
+                        "text": question,
+                    },
+                ],
+            }
         ]
 
-        # Uses qwen_vl_utils to parse the images out of the message dictionary
-        image_inputs, video_inputs = process_vision_info(messages_batch)
-
+        image_inputs, video_inputs = process_vision_info(messages)
+        text = self.processor.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=False,
+        )
         inputs = self.processor(
-            text=texts, images=image_inputs, padding=True, return_tensors="pt"
-        ).to(self.model.device)
-
-        with torch.no_grad():
-            generated_ids = self.model.generate(
-                **inputs,
-                max_new_tokens=1024,
-                temperature=0.1,
-                do_sample=False,
-            )
-
-        generated_ids_trimmed = [
-            out_ids[len(in_ids) :]
-            for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-        ]
-
-        output_texts = self.processor.batch_decode(
-            generated_ids_trimmed,
-            skip_special_tokens=True,
-            clean_up_tokenization_spaces=False,
+            text=[text],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt",
         )
 
-        final_results = []
-        for path, text in zip(valid_paths, output_texts):
-            result = self._extract_tags(text.strip())
-            result["image_path"] = path
-            final_results.append(result)
+        return inputs
 
-        return final_results
+    def parse_batched_input(self, batch_inputs):
+        # override this function if the model requires special parsing of batched inputs before feeding into the model
+        # remove key: original_indices
+        return {k: v for k, v in batch_inputs.items() if k != "original_indices"}
 
 
-def get_output_dir(base_results_path="results/common-meme-detection/qwen-3.5"):
+def get_output_dir(base_results_path="results/finetuned-siglip"):
     """
     Creates and returns the directory path: base/YYYYMMDD/config_[X]
     """
+    # 1. Create date folder
     date_str = datetime.now().strftime("%Y%m%d")
     date_path = os.path.join(base_results_path, date_str)
     os.makedirs(date_path, exist_ok=True)
 
+    # 2. Determine config_X folder name
     existing_configs = [d for d in os.listdir(date_path) if d.startswith("config_")]
 
+    # Extract numbers and find the next one
     config_numbers = []
     for d in existing_configs:
         try:
@@ -158,95 +246,108 @@ def get_output_dir(base_results_path="results/common-meme-detection/qwen-3.5"):
     return config_path
 
 
-def process_image_folder(analyzer, base_folder, output_folder, batch_size=4):
-    """
-    Scans a base folder for 'positive' and 'negative' subdirectories,
-    runs inference, and saves results to the specified output_folder.
-    """
-    subdirs = ["positive", "negative"]
-    image_paths = []
-
-    for subdir in subdirs:
-        dir_path = os.path.join(base_folder, subdir)
-        if os.path.exists(dir_path):
-            for filename in os.listdir(dir_path):
-                if filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
-                    image_paths.append((os.path.join(dir_path, filename), subdir))
-        else:
-            print(f"Warning: Subdirectory '{dir_path}' not found.")
-
-    if not image_paths:
-        print(f"No images found in {base_folder}/[positive|negative]")
-        return
-
-    output_jsonl = os.path.join(output_folder, "meme_analysis_results.jsonl")
-
-    prompt_file = os.path.join(output_folder, "prompt.txt")
-    with open(prompt_file, "w", encoding="utf-8") as f_prompt:
-        f_prompt.write(analyzer.system_prompt)
-
-    print(f"Saving results to: {output_folder}")
-    print(
-        f"Found {len(image_paths)} images. Starting batched inference (Batch size: {batch_size})..."
-    )
-
-    def chunker(seq, size):
-        return (seq[pos : pos + size] for pos in range(0, len(seq), size))
-
-    with open(output_jsonl, "a", encoding="utf-8") as f:
-        batches = list(chunker(image_paths, batch_size))
-        for batch in tqdm(batches, desc="Analyzing Batches"):
-            batch_paths = [item[0] for item in batch]
-            results = analyzer.infer_meme_batch(batch_paths)
-
-            for res in results:
-                ground_truth = next(
-                    (item[1] for item in batch if item[0] == res["image_path"]),
-                    "unknown",
-                )
-
-                ordered_res = {
-                    "image_name": os.path.basename(res["image_path"]),
-                    "ground_truth": ground_truth,
-                    "predicted_result": res["status"],
-                    "reasoning": res.get("reasoning", ""),
-                    "image_path": res["image_path"],
-                    "raw_output": res.get("raw_output", ""),
-                }
-
-                f.write(json.dumps(ordered_res, ensure_ascii=False) + "\n")
-
-    print(f"\nFinished processing! Results saved in {output_folder}")
-
-
 if __name__ == "__main__":
-    system_prompt = """
-    You are an expert archivist of internet culture. Your only job is to determine if this image is a 'common image,meme or unknown'. A Common Meme is defined as a meme that it's humor idea is universally shared, a common image is a image that is not memebasic fact, or global internet culture (e.g., relatable daily struggles, standard reaction faces). Strict Rules:
-    1. DO NOT GUESS. If you can confidently identify the humor idea and it completely relies on hyper-local slang, regional figures, or requires specific cultural context from Southeast Asia (Vietnam, Indonesia), or there is no joke, classify it as UNKNOWN.
-    2. If you are not certain how the visual objects in the image contribute to the humor and the humor idea is not clear, classify as UNKNOWN.
-    3. If its' a meme, look at the overall meaning, only classify the meme as COMMON if the basic ideas can be understood based on a universally shared experience or fact.
-    4. There are emotional slangs, you can ignore them if the humor is still clear without understanding those words.
-    Strict analysis steps:
-    1. Translate: Translate the text.
-    2. Test universality: If you translate the joke into English and show it to someone in a different country, would they 'get' the basic idea?
-    Put your reasoning trace and your final conclusion EXACTLY using the tags as follows:
-    <reason>Explain your thought process step-by-step. Identify any text, visual tropes, or cultural markers.</reason>
-    <answer> COMMON or UNKNOWN </answer>
-    """
-    output_dir = get_output_dir()
+    model = Qwen35(model_str="Qwen/Qwen3.5-27B")
 
-    # NOTE: Set the model_id to the exact Vision-Language variant you wish to use.
-    # We default here to a generalized "Qwen/Qwen3.5-VL-27B-Instruct" to show the pattern.
-    analyzer = MemeFilterVLM(
-        model_id="Qwen/Qwen3.5-27B", system_prompt=system_prompt
+    processor = model.processor
+    generator = model.generator
+
+    max_new_tokens = 512
+    # local_lang = "Indonesian"
+    batch_size = 8
+    temperature = 0.5
+    top_p = 0.9
+    top_k = 50
+    repetition_penalty = 1.0
+
+    device = "auto"
+
+    dataloader, dataset = create_dataloader(
+        model=model,
+        image_root="/home/ubuntu/qwen3.5_vl_meme/images",
+        system_prompt=(
+            "You are an expert archivist of internet culture. Your task is to classify and explain why this meme should be categorized as either a cultural meme or a common meme.\n"
+            "A cultural meme is a meme that may require specific cultural knowledge, context, or references to understand and appreciate. When translated, the cultural context may be lost or the meme may not be understood in the same way.\n"
+            "A common meme is a meme that is widely recognized and understood across different cultures and contexts. It relies on universal humor, visual elements, or themes that can be appreciated by a broad audience regardless of cultural background.\n"
+            "Strict rules:\n"
+            "1. Do not make decision based on the meaning of the meme since cultural memes may have different levels of meaning.\n"
+            "2. Focus on the visual elements, text, pun, and any cultural markers that can be identified.\n"
+            "3. Ignore the slang for emotional expression.\n"
+            "4. Using local language does not necessarily make a meme a cultural meme, it depends on the context and the visual elements of the meme.\n"
+            "Put your reasoning trace EXACTLY using the tags as follows:\n"
+            "<reason>Give your reasoning here</reason>"
+            "<answer>CULTURAL or COMMON</answer>"
+        ),
+        batch_size=8,
+        num_workers=4,
     )
 
-    TARGET_FOLDER = "dataset/sample-common-meme-detector"
-    BATCH_SIZE = 4
+    output_dir = get_output_dir(base_results_path="results/qwen3.5-meme-inference")
+    output_path = os.path.join(output_dir, "generated_responses.jsonl")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
-    if os.path.exists(TARGET_FOLDER):
-        process_image_folder(analyzer, TARGET_FOLDER, output_dir, batch_size=BATCH_SIZE)
-    else:
-        print(
-            f"Please create the folder '{TARGET_FOLDER}' with 'positive'/'negative' subfolders."
+    reasoning_tags: tuple = (("<reasoning>", "</reasoning>"),)
+    new_key = "reasoning"
+
+    for batch in tqdm(dataloader, desc="Processing image batches"):
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        responses_list = []
+        batch_indices = batch["original_indices"]
+        # Process batch
+        # inputs = {"input_ids": batch["input_ids"], "attention_mask": batch["attention_mask"]}
+        inputs = model.parse_batched_input(batch)
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+
+        generator.eval()
+        # Generate responses from VLM
+        generated_ids = generator.generate(
+            **inputs,
+            do_sample=True,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            repetition_penalty=repetition_penalty,
         )
+
+        # print(generated_ids)
+
+        generated_ids_trimmed = [
+            out_ids[len(in_ids) :]
+            for in_ids, out_ids in zip(inputs["input_ids"], generated_ids)
+        ]
+
+        generated_texts = processor.batch_decode(
+            generated_ids_trimmed,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )  # decode from token ids to text
+
+        # Extract answers from generated texts
+        search_pattern = rf"{reasoning_tags[0]}(.*?){reasoning_tags[1]}"
+
+        for generated_text in generated_texts:
+            if reasoning_tags is not None:
+                match = re.search(search_pattern, generated_text, re.DOTALL)
+                answer = match.group(1).strip() if match else generated_text
+                # start_tag, end_tag = answer_tags
+                # start_idx = generated_text.find(start_tag) + len(start_tag)
+                # end_idx = generated_text.find(end_tag)
+                # answer = generated_text[start_idx:end_idx].strip() if start_idx != -1 and end_idx != -1 else generated_text
+            else:
+                answer = generated_text
+            responses_list.append(answer)
+
+        for idx, response, raw_text in zip(
+            batch_indices, responses_list, generated_texts
+        ):
+            data = {}
+            data[new_key] = response
+            data["raw_generated_text"] = raw_text
+
+            with open(output_path, "a", encoding="utf-8") as outfile:  # 'a' for append
+                outstring = json.dumps(data) + "\n"
+                outfile.write(outstring)
