@@ -274,7 +274,7 @@ if __name__ == "__main__":
             "2. Focus on the visual elements, text, pun, and any cultural markers that can be identified.\n"
             "3. Ignore the slang for emotional expression.\n"
             "4. Using local language does not necessarily make a meme a cultural meme, it depends on the context and the visual elements of the meme.\n"
-            "Put your reasoning trace EXACTLY using the tags as follows:\n"
+            "Enclose your answer between reasoning trace and answer using the tags as follows:\n"
             "<reason>Give your reasoning here</reason>"
             "<answer>CULTURAL or COMMON</answer>"
         ),
@@ -345,7 +345,9 @@ if __name__ == "__main__":
             batch_indices, responses_list, generated_texts
         ):
             data = {}
-            data["image_path"] = dataset.image_root + "/" + os.listdir(dataset.image_root)[idx]
+            data["image_path"] = (
+                dataset.image_root + "/" + os.listdir(dataset.image_root)[idx]
+            )
             data[new_key] = response
             data["raw_generated_text"] = raw_text
 
