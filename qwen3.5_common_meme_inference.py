@@ -275,8 +275,9 @@ if __name__ == "__main__":
             "3. Ignore the slang for emotional expression.\n"
             "4. Using local language does not necessarily make a meme a cultural meme, it depends on the context and the visual elements of the meme.\n"
             "Enclose your answer between reasoning trace and answer using the tags as follows:\n"
-            "<reason>Give your reasoning here</reason>"
-            "<answer>CULTURAL or COMMON</answer>"
+            "<reason>Give your reasoning here. You should extract the text, visual cues that support your classification.</reason>"
+            "<answer>CULTURAL or COMMON</answer>\n"
+            "For example: <reason>The meme seems to use a pun that requires knowledge about the language and cultural context to understand.</reason><answer>CULTURAL</answer>"
         ),
         batch_size=8,
         num_workers=4,
