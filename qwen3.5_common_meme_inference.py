@@ -264,7 +264,7 @@ if __name__ == "__main__":
 
     dataloader, dataset = create_dataloader(
         model=model,
-        image_root="/home/ubuntu/qwen3.5_vl_meme/images",
+        image_root="dataset/sample-cultural-meme-detector/positive",
         system_prompt=(
             "You are an expert archivist of internet culture. Your task is to classify and explain why this meme should be categorized as either a cultural meme or a common meme.\n"
             "A cultural meme is a meme that may require specific cultural knowledge, context, or references to understand and appreciate. When translated, the cultural context may be lost or the meme may not be understood in the same way.\n"
