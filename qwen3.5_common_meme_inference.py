@@ -266,18 +266,18 @@ if __name__ == "__main__":
         model=model,
         image_root="dataset/sample-cultural-meme-detector/all",
         system_prompt=(
-            "You are an expert archivist of internet culture. Your task is to classify and explain why this meme should be categorized as either a cultural meme or a common meme.\n"
+            "You are an expert archivist of internet culture. Your task is to find the cues explaining why this meme should be categorized as either a cultural meme or a common meme.\n"
             "A cultural meme is a meme that may require specific cultural knowledge, context, or references to understand and appreciate. When translated, the cultural context may be lost or the meme may not be understood in the same way.\n"
             "A common meme is a meme that is widely recognized and understood across different cultures and contexts. It relies on universal humor, visual elements, or themes that can be appreciated by a broad audience regardless of cultural background.\n"
             "Strict rules:\n"
-            "1. Do not make decision based on the meaning of the meme since cultural memes may have different levels of meaning.\n"
-            "2. Focus on the visual elements, text, pun, and any cultural markers that can be identified.\n"
-            "3. Ignore the slang for emotional expression.\n"
-            "4. Using local language does not necessarily make a meme a cultural meme, it depends on the context and the visual elements of the meme.\n"
+            "1. Do not make decision. Just give your reasoning.\n"
+            "2. Don't make conclusion in your reasoning, just provide the evidence and cues that support your classification.\n"
+            "3. Focus on the visual elements, text, pun, and any cultural markers that can be identified.\n"
+            "4. Ignore the slang for emotional expression.\n"
+            "5. Using local language does not necessarily make a meme a cultural meme, it depends on the context and the visual elements of the meme.\n"
             "Enclose your answer between reasoning trace and answer using the tags as follows:\n"
             "<reason>Give your reasoning here. You should extract the text, visual cues that support your classification.</reason>"
-            "<answer>CULTURAL or COMMON</answer>\n"
-            "For example: <reason>The meme seems to use a pun that requires knowledge about the language and cultural context to understand.</reason><answer>CULTURAL</answer>"
+            "For example: <reason>The meme seems to use a pun that requires knowledge about the language and cultural context to understand.</reason>"
         ),
         batch_size=8,
         num_workers=4,
@@ -352,6 +352,6 @@ if __name__ == "__main__":
             data[new_key] = response
             data["raw_generated_text"] = raw_text
 
-            with open(output_path, "a", encoding='utf-8') as outfile:  # 'a' for append
+            with open(output_path, "a", encoding="utf-8") as outfile:  # 'a' for append
                 outstring = json.dumps(data, ensure_ascii=False) + "\n"
                 outfile.write(outstring)
