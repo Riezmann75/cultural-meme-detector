@@ -352,6 +352,6 @@ if __name__ == "__main__":
             data[new_key] = response
             data["raw_generated_text"] = raw_text
 
-            with open(output_path, "a", encoding="utf-8") as outfile:  # 'a' for append
-                outstring = json.dumps(data) + "\n"
+            with open(output_path, "a", encoding='utf-8') as outfile:  # 'a' for append
+                outstring = json.dumps(data, ensure_ascii=False) + "\n"
                 outfile.write(outstring)
