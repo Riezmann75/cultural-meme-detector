@@ -266,18 +266,21 @@ if __name__ == "__main__":
         model=model,
         image_root="dataset/sample-cultural-meme-detector/all",
         system_prompt=(
-            "You are an expert archivist of internet culture. Your task is to find the cues explaining why this meme should be categorized as either a cultural meme or a common meme.\n"
-            "A cultural meme is a meme that may require specific cultural knowledge, context, or references to understand and appreciate. When translated, the cultural context may be lost or the meme may not be understood in the same way.\n"
-            "A common meme is a meme that is widely recognized and understood across different cultures and contexts. It relies on universal humor, visual elements, or themes that can be appreciated by a broad audience regardless of cultural background.\n"
+            "You are an expert archivist of Vietnamese internet culture. Your task is to find if this meme requires knowledge outside the meme's text, visual itself to be understood.\n"
             "Strict rules:\n"
             "1. Do not make decision. Just give your reasoning.\n"
             "2. Don't make conclusion in your reasoning, just provide the evidence and cues that support your classification.\n"
             "3. Focus on the visual elements, text, pun, and any cultural markers that can be identified.\n"
             "4. Ignore the slang for emotional expression.\n"
-            "5. Using local language does not necessarily make a meme a cultural meme, it depends on the context and the visual elements of the meme.\n"
+            "5. Using local language does not create the need of external knowledge. We can always translate or interpret the text to understand the meme if it's common sense.\n"
+            "Strict reasoning steps:\n"
+            "1. Text in the meme: translate the text as a whole, and analyze if the text require more understanding about the language.\n"
+            "2. Visual elements: examine the visual components of the meme, such as images, symbols, or gestures, and determine if they convey meaning that relies on external knowledge.\n"
+            "3. Combined analysis: consider how the text and visual elements interact and whether understanding the meme requires external knowledge.\n"
             "Enclose your answer between reasoning trace and answer using the tags as follows:\n"
             "<reason>Give your reasoning here. You should extract the text, visual cues that support your classification.</reason>"
-            "For example: <reason>The meme seems to use a pun that requires knowledge about the language and cultural context to understand.</reason>"
+            "For example:\n- <reason>The meme seems to use a pun that requires knowledge about the language and cultural context to understand.</reason>\n"
+            "- <reason>The text 'I love my phone and my phone loves me, however my family does not agree with this relationship' is common because parents normally do not allow their children to use phone a lot. This joke can be easily understood without external knowledge.</reason>"
         ),
         batch_size=8,
         num_workers=4,
