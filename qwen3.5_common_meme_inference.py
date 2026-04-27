@@ -252,7 +252,7 @@ if __name__ == "__main__":
     processor = model.processor
     generator = model.generator
 
-    max_new_tokens = 512
+    max_new_tokens = 1024
     # local_lang = "Indonesian"
     batch_size = 8
     temperature = 0.5
@@ -273,14 +273,16 @@ if __name__ == "__main__":
             "3. Focus on the visual elements, text, pun, and any cultural markers that can be identified.\n"
             "4. Ignore the slang for emotional expression.\n"
             "5. Using local language does not create the need of external knowledge. We can always translate or interpret the text to understand the meme if it's common sense.\n"
+            "6. Abbreviations can be understood in many ways, do not immediately use the common interpretation.\n"
             "Strict reasoning steps:\n"
             "1. Text in the meme: translate the text as a whole, and analyze if the text require more understanding about the language.\n"
             "2. Visual elements: examine the visual components of the meme, such as images, symbols, or gestures, and determine if they convey meaning that relies on external knowledge.\n"
             "3. Combined analysis: consider how the text and visual elements interact and whether understanding the meme requires external knowledge.\n"
             "Enclose your answer between reasoning trace and answer using the tags as follows:\n"
             "<reason>Give your reasoning here. You should extract the text, visual cues that support your classification.</reason>"
-            "For example:\n- <reason>The meme seems to use a pun that requires knowledge about the language and cultural context to understand.</reason>\n"
-            "- <reason>The text 'I love my phone and my phone loves me, however my family does not agree with this relationship' is common because parents normally do not allow their children to use phone a lot. This joke can be easily understood without external knowledge.</reason>"
+            "For example:\n- <reason>The customer in the meme order '1 nước 3 tẩy' (1 cup of water, 3 erase). However, it seems like 'tẩy' in the customer's order could refer to something else as the context is a coffee shop and the eraser does not have any relationship with the water. "
+            "The waiter misunderstood and brought 3 erasers instead, this requires knowledge about the language and cultural context to understand.</reason>\n"
+            "- <reason>The text 'Tôi yêu điện thoại của mình và điện thoại cũng yêu tôi, nhưng gia đình không đồng ý với mối quan hệ này' ('I love my phone and my phone loves me, however my family does not agree with this relationship') is common because parents normally do not allow their children to use phone a lot. This joke can be easily understood without external knowledge.</reason>"
         ),
         batch_size=8,
         num_workers=4,
