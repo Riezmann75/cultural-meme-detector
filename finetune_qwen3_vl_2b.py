@@ -312,7 +312,7 @@ if __name__ == "__main__":
 
     model = QwenVLBinaryClassifier(MODEL_ID, lora_config)
 
-    BATCH_SIZE = 2
+    BATCH_SIZE = 1
     EPOCHS = 50
     LR = 1e-4
 
@@ -328,7 +328,7 @@ if __name__ == "__main__":
         image_root_dir="dataset/sample-cultural-meme-detector/split_dataset/train/vi",
         system_prompt="Given the image and the reasoning provided below, classify if the meme is a cultural meme or common meme.",
         batch_size=BATCH_SIZE,
-        num_workers=1,
+        num_workers=0,
         drop_last=True,
         shuffle=True,
     )
@@ -339,7 +339,7 @@ if __name__ == "__main__":
         image_root_dir="dataset/sample-cultural-meme-detector/split_dataset/val/vi",
         system_prompt="Given the image and the reasoning provided below, classify if the meme is a cultural meme or common meme.",
         batch_size=BATCH_SIZE,
-        num_workers=1,
+        num_workers=0,
     )
 
     test_loader, _ = create_dataloader(
@@ -348,7 +348,7 @@ if __name__ == "__main__":
         image_root_dir="dataset/sample-cultural-meme-detector/split_dataset/test/vi",
         system_prompt="Given the image and the reasoning provided below, classify if the meme is a cultural meme or common meme.",
         batch_size=BATCH_SIZE,
-        num_workers=1,
+        num_workers=0,
     )
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
