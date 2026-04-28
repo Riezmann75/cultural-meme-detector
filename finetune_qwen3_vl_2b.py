@@ -12,6 +12,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from transformers import (
     AutoModelForCausalLM,
+    AutoModelForImageTextToText,
     AutoProcessor,
 )
 from peft import LoraConfig, get_peft_model
@@ -214,7 +215,7 @@ class QwenVLBinaryClassifier(nn.Module):
     def __init__(self, model_id, lora_config):
         super().__init__()
 
-        base_model = AutoModelForCausalLM.from_pretrained(
+        base_model = AutoModelForImageTextToText.from_pretrained(
             model_id, torch_dtype=torch.bfloat16, trust_remote_code=True
         )
 

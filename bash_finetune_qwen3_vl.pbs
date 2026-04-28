@@ -3,9 +3,9 @@
 #PBS -l select=1:ngpus=4
 #PBS -q ai
 #PBS -P 12004268
-#PBS -N finetune_qwen2.5
+#PBS -N finetune_qwen3_vl
 #PBS -j oe
-#PBS -o /home/project/12004268/giabao/cultural-meme-detector/out_finetune_qwen2.5.txt
+#PBS -o /home/project/12004268/giabao/cultural-meme-detector/out_finetune_qwen3_vl.txt
 #PBS -m abe
 #PBS -M giabao.cao@ntu.edu.sg
 
