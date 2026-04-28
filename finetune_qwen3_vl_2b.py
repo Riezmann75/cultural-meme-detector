@@ -326,7 +326,7 @@ if __name__ == "__main__":
         processor=processor,
         jsonl_file="generated_responses.jsonl",
         image_root_dir="dataset/sample-cultural-meme-detector/split_dataset/train/vi",
-        system_prompt="Given the image and the reasoning provided, classify if the meme is a cultural meme or common meme.",
+        system_prompt="Given the image and the reasoning provided below, classify if the meme is a cultural meme or common meme.",
         batch_size=BATCH_SIZE,
         num_workers=4,
         drop_last=True,
@@ -337,7 +337,7 @@ if __name__ == "__main__":
         processor=processor,
         jsonl_file="generated_responses.jsonl",
         image_root_dir="dataset/sample-cultural-meme-detector/split_dataset/val/vi",
-        system_prompt="Given the image and the reasoning provided, classify if the meme is a cultural meme or common meme.",
+        system_prompt="Given the image and the reasoning provided below, classify if the meme is a cultural meme or common meme.",
         batch_size=BATCH_SIZE,
         num_workers=4,
     )
@@ -346,7 +346,7 @@ if __name__ == "__main__":
         processor=processor,
         jsonl_file="generated_responses.jsonl",
         image_root_dir="dataset/sample-cultural-meme-detector/split_dataset/test/vi",
-        system_prompt="Given the image and the reasoning provided, classify if the meme is a cultural meme or common meme.",
+        system_prompt="Given the image and the reasoning provided below, classify if the meme is a cultural meme or common meme.",
         batch_size=BATCH_SIZE,
         num_workers=4,
     )
