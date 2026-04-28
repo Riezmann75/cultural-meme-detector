@@ -305,7 +305,7 @@ if __name__ == "__main__":
             "up_proj",
             "down_proj",
         ],
-        lora_dropout=0.2,
+        lora_dropout=0.3,
         bias="none",
         task_type="FEATURE_EXTRACTION",
     )
@@ -317,7 +317,7 @@ if __name__ == "__main__":
     LR = 1e-4
 
     loss_fn = nn.BCEWithLogitsLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LR)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-2)
 
     accelerator = Accelerator()
 
