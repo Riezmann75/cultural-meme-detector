@@ -28,4 +28,4 @@ TORCHDYNAMO_VERBOSE=1
 export HF_HOME="/home/users/ntu/giabaoca/myProject-12004268/giabao/hf_cache"
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 export CUDA_LAUNCH_BLOCKING=1
-accelerate launch finetune_qwen3_vl_2b.py
+accelerate launch finetune_qwen3_vl_2b.py --save-model
