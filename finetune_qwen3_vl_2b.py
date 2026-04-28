@@ -1,6 +1,7 @@
 import argparse
 from datetime import datetime
 import json
+import pdb
 import random
 import os
 import numpy as np
@@ -47,6 +48,14 @@ class MemeReasoningDataset(Dataset):
                 if annot["image_path"].split("/")[-1] in pos_files
                 or annot["image_path"].split("/")[-1] in neg_files
             ]
+            
+            # replace image_path in data with the postive_image_dir or negative_image_dir path
+            for annot in self.data:
+                img_filename = annot["image_path"].split("/")[-1]
+                if img_filename in pos_files:
+                    annot["image_path"] = os.path.join(self.positive_image_dir, img_filename)
+                elif img_filename in neg_files:
+                    annot["image_path"] = os.path.join(self.negative_image_dir, img_filename)
 
     def __len__(self):
         return len(self.data)
@@ -96,8 +105,11 @@ class MemeCollateFn:
                 messages,
                 tokenize=False,
                 add_generation_prompt=True,
-                enable_thinking=False,
+                processor_kwargs={
+                    "enable_thinking": False,
+                },
             )
+
             inputs = self.processor(
                 text=[text],
                 images=image_inputs,
@@ -107,10 +119,17 @@ class MemeCollateFn:
             )
             processed_inputs.append(
                 {
-                    "input_ids": inputs["input_ids"].squeeze(0),
-                    "attention_mask": inputs["attention_mask"].squeeze(0),
-                    "pixel_values": inputs["images"].squeeze(0),
-                    "image_grid_thw": inputs["image_grid_thw"].squeeze(0),
+                    "input_ids": inputs["input_ids"].squeeze(0),  # shape: (seq_len,)
+                    "attention_mask": inputs["attention_mask"].squeeze(
+                        0
+                    ),  # shape: (seq_len,)
+                    "pixel_values": inputs["pixel_values"].squeeze(
+                        0
+                    ),  # shape: (3, H, W)
+                    "image_grid_thw": inputs["image_grid_thw"],  # shape: (1, 3)
+                    "mm_token_type_ids": inputs["mm_token_type_ids"].squeeze(
+                        0
+                    ),  # shape: (seq_len,)
                 }
             )
             labels.append(label)
@@ -118,7 +137,7 @@ class MemeCollateFn:
         pixel_values = tuple([item["pixel_values"] for item in processed_inputs])
         image_grid_thw = tuple([item["image_grid_thw"] for item in processed_inputs])
 
-        max_length = max(input["input_ids"].shape[1] for input in processed_inputs)
+        max_length = max(input["input_ids"].shape[0] for input in processed_inputs)
         batch_size = len(processed_inputs)
 
         # --- FIX 3: Padding Token ---
@@ -132,17 +151,20 @@ class MemeCollateFn:
         input_ids = torch.full(
             (batch_size, max_length), fill_value=pad_token_id, dtype=torch.long
         )
+        mm_token_type_ids = torch.zeros((batch_size, max_length), dtype=torch.long)
 
         for i, input in enumerate(processed_inputs):
-            length = input["input_ids"].shape[1]
+            length = input["input_ids"].shape[0]
             input_ids[i, -length:] = input["input_ids"]
             attn_mask[i, -length:] = 1
+            mm_token_type_ids[i, -length:] = input["mm_token_type_ids"]
 
         inputs = {
             "input_ids": input_ids,
             "attention_mask": attn_mask,
             "pixel_values": torch.cat(pixel_values, dim=0),
             "image_grid_thw": torch.cat(image_grid_thw, dim=0),
+            "mm_token_type_ids": mm_token_type_ids,
         }
 
         labels = torch.tensor(labels, dtype=torch.float32).unsqueeze(1)
@@ -174,14 +196,13 @@ def create_dataloader(
         jsonl_file=jsonl_file,
         system_prompt=system_prompt,
         image_root_dir=image_root_dir,
-    )  # Removed the unexpected kwargs 'model=model' that would throw a TypeError
+    )
 
     collate_fn = MemeCollateFn(processor=processor, system_prompt=system_prompt)
 
     dataloader = DataLoader(
         dataset=dataset,
         batch_size=batch_size,
-        shuffle=False,  # Consider setting True for train loader outside this function
         num_workers=num_workers,
         collate_fn=collate_fn,
         **kwargs,
@@ -218,9 +239,9 @@ class QwenVLBinaryClassifier(nn.Module):
         base_model = AutoModelForImageTextToText.from_pretrained(
             model_id, torch_dtype=torch.bfloat16, trust_remote_code=True
         )
-
         self.backbone = get_peft_model(base_model, lora_config)
-        hidden_size = self.backbone.config.hidden_size
+
+        hidden_size = self.backbone.config.text_config.hidden_size
 
         self.classifier_head = nn.Sequential(
             nn.Linear(hidden_size, hidden_size // 2, dtype=torch.bfloat16),
@@ -230,7 +251,12 @@ class QwenVLBinaryClassifier(nn.Module):
         )
 
     def forward(
-        self, input_ids, attention_mask, pixel_values=None, image_grid_thw=None
+        self,
+        input_ids,
+        attention_mask,
+        pixel_values=None,
+        image_grid_thw=None,
+        mm_token_type_ids=None,
     ):
         outputs = self.backbone(
             input_ids=input_ids,
@@ -238,6 +264,7 @@ class QwenVLBinaryClassifier(nn.Module):
             pixel_values=pixel_values,
             image_grid_thw=image_grid_thw,
             output_hidden_states=True,
+            mm_token_type_ids=mm_token_type_ids,
         )
 
         last_layer_hidden_states = outputs.hidden_states[-1]
@@ -262,8 +289,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    output_dir = get_output_dir(base_results_path="results/finetuned-qwen3-vl-2b")
-
     print("Loading Processor...")
     processor = AutoProcessor.from_pretrained(MODEL_ID, trust_remote_code=True)
     processor.tokenizer.padding_side = "left"
@@ -280,20 +305,19 @@ if __name__ == "__main__":
             "up_proj",
             "down_proj",
         ],
-        lora_dropout=0.1,
+        lora_dropout=0.2,
         bias="none",
         task_type="FEATURE_EXTRACTION",
     )
 
-    print("Building Model...")
     model = QwenVLBinaryClassifier(MODEL_ID, lora_config)
 
     BATCH_SIZE = 4
-    EPOCHS = 15
+    EPOCHS = 50
     LR = 1e-4
 
     loss_fn = nn.BCEWithLogitsLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR)
 
     accelerator = Accelerator()
 
@@ -348,45 +372,15 @@ if __name__ == "__main__":
     global_train_losses = []
     global_val_losses = []
 
+    global_train_accs = []
+    global_val_accs = []
+
     for epoch in range(EPOCHS):
-        model.train()
-        total_train_loss = 0.0
-
-        train_loop = tqdm(
-            train_loader,
-            desc=f"Epoch {epoch+1}/{EPOCHS} [Train]",
-            disable=not accelerator.is_main_process,
-        )
-
-        for batch in train_loop:
-            optimizer.zero_grad()
-            inputs, labels = batch
-
-            logits = model(
-                input_ids=inputs["input_ids"],
-                attention_mask=inputs["attention_mask"],
-                pixel_values=inputs["pixel_values"],
-                image_grid_thw=inputs["image_grid_thw"],
-            )
-
-            loss = loss_fn(logits, labels)
-
-            accelerator.backward(loss)
-            optimizer.step()
-
-            total_train_loss += loss.item()
-            if accelerator.is_main_process:
-                train_loop.set_postfix(loss=total_train_loss / (train_loop.n + 1))
-
-        avg_train_loss = total_train_loss / len(train_loader)
-        avg_train_loss_tensor = torch.tensor(avg_train_loss, device=accelerator.device)
-        global_train_loss = accelerator.reduce(
-            avg_train_loss_tensor, reduction="mean"
-        ).item()
-
+        # Collect validation loss first before training loop to get an initial sense of performance before any updates
         model.eval()
         val_loss_fn = nn.BCEWithLogitsLoss(reduction="none")
         all_gathered_losses = []
+        all_gathered_accs = []
 
         val_loop = tqdm(
             validation_loader,
@@ -403,26 +397,88 @@ if __name__ == "__main__":
                     attention_mask=inputs["attention_mask"],
                     pixel_values=inputs["pixel_values"],
                     image_grid_thw=inputs["image_grid_thw"],
+                    mm_token_type_ids=inputs["mm_token_type_ids"],
                 )
+                preds = (torch.sigmoid(logits) > 0.5).float()
+                correct = (preds == labels).float().sum()
+                total = labels.size(0)
+                acc = accelerator.reduce(correct, reduction="sum").item() / (total * accelerator.num_processes)
+                acc = torch.tensor(acc, device=accelerator.device)
 
                 individual_losses = val_loss_fn(logits, labels)
                 gathered_losses = accelerator.gather_for_metrics(individual_losses)
                 all_gathered_losses.extend(gathered_losses.cpu().tolist())
 
+                gathered_accs = accelerator.gather_for_metrics(acc)
+                all_gathered_accs.extend(gathered_accs.cpu().tolist())
+
                 if accelerator.is_main_process:
-                    current_avg = (
+                    current_avg_loss = (
                         sum([l[0] for l in all_gathered_losses])
                         / len(all_gathered_losses)
                         if all_gathered_losses
                         else 0
                     )
-                    val_loop.set_postfix(val_loss=current_avg)
+                    current_avg_acc = sum(all_gathered_accs) / len(all_gathered_accs)
+                    val_loop.set_postfix(
+                        val_loss=current_avg_loss, val_acc=current_avg_acc
+                    )
 
-        global_val_loss = (
-            sum([l[0] for l in all_gathered_losses]) / len(all_gathered_losses)
-            if all_gathered_losses
-            else 0.0
+        global_val_loss = sum([l[0] for l in all_gathered_losses]) / len(
+            all_gathered_losses
         )
+        global_val_acc = sum(all_gathered_accs) / len(all_gathered_accs)
+
+        # start training loop
+
+        model.train()
+        total_train_loss = 0.0
+        total_acc = 0.0
+
+        train_loop = tqdm(
+            train_loader,
+            desc=f"Epoch {epoch+1}/{EPOCHS} [Train]",
+            disable=not accelerator.is_main_process,
+        )
+
+        for batch in train_loop:
+            optimizer.zero_grad()
+            inputs, labels = batch
+
+            logits = model(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],
+                pixel_values=inputs["pixel_values"],
+                image_grid_thw=inputs["image_grid_thw"],
+                mm_token_type_ids=inputs["mm_token_type_ids"],
+            )
+
+            preds = (torch.sigmoid(logits) > 0.5).float()
+            correct = (preds == labels).float().sum()
+            total = labels.size(0)
+            acc = accelerator.reduce(correct, reduction="sum").item() / (total * accelerator.num_processes)
+
+            loss = loss_fn(logits, labels)
+
+            accelerator.backward(loss)
+            optimizer.step()
+
+            total_train_loss += loss.item()
+            total_acc += acc
+            if accelerator.is_main_process:
+                train_loop.set_postfix(loss=total_train_loss / (train_loop.n + 1), acc=total_acc / (train_loop.n + 1))
+
+        avg_train_loss = total_train_loss / len(train_loader)
+        avg_train_loss_tensor = torch.tensor(avg_train_loss, device=accelerator.device)
+        global_train_loss = accelerator.reduce(
+            avg_train_loss_tensor, reduction="mean"
+        ).item()
+
+        avg_train_acc = total_acc / len(train_loader)
+        avg_train_acc_tensor = torch.tensor(avg_train_acc, device=accelerator.device)
+        global_train_acc = accelerator.reduce(
+            avg_train_acc_tensor, reduction="mean"
+        ).item()
 
         scheduler.step()
 
@@ -432,10 +488,13 @@ if __name__ == "__main__":
             )
             global_train_losses.append(global_train_loss)
             global_val_losses.append(global_val_loss)
+            global_train_accs.append(global_train_acc)
+            global_val_accs.append(global_val_acc)
 
     accelerator.wait_for_everyone()
 
     if accelerator.is_main_process:
+        output_dir = get_output_dir(base_results_path="results/finetuned-qwen3-vl-2b")
         with open(os.path.join(output_dir, "training_log.json"), "w") as f:
             log_dict = {
                 "num_epochs": EPOCHS,
@@ -446,13 +505,15 @@ if __name__ == "__main__":
                 "Lora_config": {
                     "r": lora_config.r,
                     "lora_alpha": lora_config.lora_alpha,
-                    "target_modules": lora_config.target_modules,
+                    "target_modules": list(lora_config.target_modules),
                     "lora_dropout": lora_config.lora_dropout,
                     "bias": lora_config.bias,
                     "task_type": lora_config.task_type,
                 },
                 "train_losses": global_train_losses,
                 "val_losses": global_val_losses,
+                "train_acc": global_train_accs,
+                "val_acc": global_val_accs,
             }
             json.dump(log_dict, f, indent=2)
 
@@ -475,3 +536,5 @@ if __name__ == "__main__":
     else:
         if accelerator.is_main_process:
             print("Training complete. Skipping model saving as requested.")
+
+    accelerator.end_training()
